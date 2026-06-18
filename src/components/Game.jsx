@@ -33,8 +33,8 @@ export default function Game() {
         style={{ width: "100%", height: "100%", display: "block" }}
       >
         {/* Set background and fog for depth/atmosphere */}
-        <color attach="background" args={["#0a0a0f"]} />
-        <fog attach="fog" args={["#0a0a0f", 15, 70]} />
+        <color attach="background" args={["#eae6df"]} />
+        <fog attach="fog" args={["#eae6df", 30, 100]} />
 
         {/* Game Elements */}
         <Arena />

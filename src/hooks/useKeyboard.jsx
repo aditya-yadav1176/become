@@ -7,6 +7,7 @@ export const useKeyboard = () => {
     left: false,
     right: false,
     jump: false,
+    shift: false,
   });
 
   useEffect(() => {
@@ -30,6 +31,10 @@ export const useKeyboard = () => {
           break;
         case "Space":
           keys.current.jump = true;
+          break;
+        case "ShiftLeft":
+        case "ShiftRight":
+          keys.current.shift = true;
           break;
         default:
           break;
@@ -56,6 +61,10 @@ export const useKeyboard = () => {
           break;
         case "Space":
           keys.current.jump = false;
+          break;
+        case "ShiftLeft":
+        case "ShiftRight":
+          keys.current.shift = false;
           break;
         default:
           break;
