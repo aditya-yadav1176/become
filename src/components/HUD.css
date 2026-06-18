@@ -1,0 +1,244 @@
+/* premium glassmorphism HUD styles */
+.hud-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #fff;
+  user-select: none;
+  z-index: 10;
+}
+
+/* Glassmorphism base styling */
+.glass-panel {
+  background: rgba(15, 15, 20, 0.6);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+}
+
+/* Top Left: Title Badge */
+.hud-title-badge {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hud-title-text {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  background: linear-gradient(135deg, #fff, #a1a1aa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-transform: uppercase;
+}
+.hud-title-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #3b82f6;
+  box-shadow: 0 0 8px #3b82f6;
+  animation: pulse 2s infinite;
+}
+
+/* Top Right: Camera Pill */
+.camera-pill {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.camera-pill.fp {
+  border: 1px solid rgba(239, 35, 60, 0.3);
+}
+.camera-pill.fp .camera-status-dot {
+  background-color: #ef233c;
+  box-shadow: 0 0 10px #ef233c;
+}
+.camera-pill.tp {
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.camera-pill.tp .camera-status-dot {
+  background-color: #3b82f6;
+  box-shadow: 0 0 10px #3b82f6;
+}
+.camera-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.camera-pill-key {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  margin-left: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+/* Center Crosshair */
+.fps-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 6px;
+  background-color: #ff3344;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #ff3344;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* Center Interactive Hover Prompt */
+.interact-prompt {
+  position: absolute;
+  top: 55%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 12px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  animation: prompt-in 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.interact-key {
+  font-size: 16px;
+  font-weight: 800;
+  background: #ffb703;
+  color: #000;
+  padding: 4px 10px;
+  border-radius: 6px;
+  box-shadow: 0 0 15px rgba(255, 183, 3, 0.4);
+  margin-bottom: 2px;
+}
+.interact-text {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+/* Bottom Center: Gameplay State Selector */
+.state-selector {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.state-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.6);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.state-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.state-btn.active {
+  color: #fff;
+}
+.state-btn.active.human {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(59, 130, 246, 0.1));
+  border-color: #3b82f6;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+}
+.state-btn.active.object {
+  background: linear-gradient(135deg, rgba(255, 183, 3, 0.25), rgba(255, 183, 3, 0.1));
+  border-color: #ffb703;
+  box-shadow: 0 0 15px rgba(255, 183, 3, 0.3);
+}
+.state-btn.active.hunter {
+  background: linear-gradient(135deg, rgba(239, 35, 60, 0.25), rgba(239, 35, 60, 0.1));
+  border-color: #ef233c;
+  box-shadow: 0 0 15px rgba(239, 35, 60, 0.3);
+}
+.state-btn-key {
+  font-size: 9px;
+  opacity: 0.5;
+}
+
+/* Right Side: Zoom Indicator */
+.zoom-indicator-panel {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: 40px;
+  height: 120px;
+  padding: 12px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.zoom-bar-container {
+  width: 4px;
+  flex: 1;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+.zoom-bar-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: #3b82f6;
+  box-shadow: 0 0 8px #3b82f6;
+  transition: height 0.1s ease-out;
+}
+.zoom-icon {
+  font-size: 10px;
+  font-weight: bold;
+  opacity: 0.6;
+}
+
+/* Animation utilities */
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; box-shadow: 0 0 6px #3b82f6; }
+  50% { transform: scale(1.15); opacity: 0.8; box-shadow: 0 0 12px #3b82f6; }
+  100% { transform: scale(1); opacity: 1; box-shadow: 0 0 6px #3b82f6; }
+}
+
+@keyframes prompt-in {
+  0% { transform: translate(-50%, -30%) scale(0.8); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}

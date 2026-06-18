@@ -1,61 +1,14 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Sparkles } from "@react-three/drei";
+import { Sparkles, Html } from "@react-three/drei";
 import * as THREE from "three";
-import { OBSTACLES, WALLS } from "../data/mapData";
+import { OBSTACLES, WALLS, FURNITURE } from "../data/mapData";
 import { useKeyboard } from "../hooks/useKeyboard";
-
-// Slab intersection method to find ray-AABB entry point
-const checkWallCollision = (p, d, wall) => {
-  const minX = wall.pos[0] - wall.size[0] / 2;
-  const maxX = wall.pos[0] + wall.size[0] / 2;
-  const minY = wall.pos[1] - wall.size[1] / 2;
-  const maxY = wall.pos[1] + wall.size[1] / 2;
-  const minZ = wall.pos[2] - wall.size[2] / 2;
-  const maxZ = wall.pos[2] + wall.size[2] / 2;
-
-  let tMin = -Infinity;
-  let tMax = Infinity;
-
-  // X axis
-  if (Math.abs(d.x) < 1e-8) {
-    if (p.x < minX || p.x > maxX) return null;
-  } else {
-    const t1 = (minX - p.x) / d.x;
-    const t2 = (maxX - p.x) / d.x;
-    tMin = Math.max(tMin, Math.min(t1, t2));
-    tMax = Math.min(tMax, Math.max(t1, t2));
-  }
-
-  // Y axis
-  if (Math.abs(d.y) < 1e-8) {
-    if (p.y < minY || p.y > maxY) return null;
-  } else {
-    const t1 = (minY - p.y) / d.y;
-    const t2 = (maxY - p.y) / d.y;
-    tMin = Math.max(tMin, Math.min(t1, t2));
-    tMax = Math.min(tMax, Math.max(t1, t2));
-  }
-
-  // Z axis
-  if (Math.abs(d.z) < 1e-8) {
-    if (p.z < minZ || p.z > maxZ) return null;
-  } else {
-    const t1 = (minZ - p.z) / d.z;
-    const t2 = (maxZ - p.z) / d.z;
-    tMin = Math.max(tMin, Math.min(t1, t2));
-    tMax = Math.min(tMax, Math.max(t1, t2));
-  }
-
-  if (tMin > tMax) return null;
-  if (tMax < 0) return null;
-  if (tMin > 1) return null;
-
-  return Math.max(0, tMin);
-};
+import CameraManager from "./CameraManager";
+import { FurnitureItem } from "./Arena";
+import "./HUD.css";
 
 export default function Character({ isLocked }) {
-  const { camera } = useThree();
   const keyboard = useKeyboard();
 
   // References for player state
@@ -79,16 +32,38 @@ export default function Character({ isLocked }) {
   const mouseRotation = useRef({ x: 0, y: 0.15 }); // yaw, pitch
   const currentLookAt = useRef(new THREE.Vector3(0, 1.6, 15));
 
-  const playerRadius = 0.8;
-  const playerHeight = 1.8;
+  // Dynamic collision dimensions
+  const playerRadiusRef = useRef(0.8);
+  const playerHeightRef = useRef(1.8);
 
-  const camDistance = useRef(3.5); // Default camera distance
+  // Client-side camera variables
+  const [cameraMode, setCameraMode] = useState("TP"); // "TP" or "FP"
+  const [gameplayState, setGameplayState] = useState("human"); // "human", "object", "hunter"
+  const [activeObject, setActiveObject] = useState(null); // active prop details
+  const [hoveredProp, setHoveredProp] = useState(null); // interactive scanned prop
+  const [transformTime, setTransformTime] = useState(0); // timestamp for visual feedback
 
-  // Handle mouse wheel zoom
+  const zoomFactor = useRef(0.5); // 0 = closest, 1 = furthest
+  const transitionT = useRef(1.0); // 0 = FP, 1 = TP
+
+  // Set default activeObject if gameplayState === "object" and activeObject is null
+  useEffect(() => {
+    if (gameplayState === "object" && !activeObject) {
+      setActiveObject({
+        id: "default_crate",
+        type: "wooden_crate",
+        size: [0.8, 0.8, 0.8],
+        color: "#8b5a2b"
+      });
+      setTransformTime(Date.now());
+    }
+  }, [gameplayState, activeObject]);
+
+  // Handle zoom scroll wheel locally
   useEffect(() => {
     const handleWheel = (e) => {
-      const zoomSpeed = 0.005;
-      camDistance.current = Math.max(2.0, Math.min(5.0, camDistance.current + e.deltaY * zoomSpeed));
+      const zoomSpeed = 0.001;
+      zoomFactor.current = Math.max(0.0, Math.min(1.0, zoomFactor.current + e.deltaY * zoomSpeed));
     };
 
     window.addEventListener("wheel", handleWheel, { passive: true });
@@ -96,6 +71,44 @@ export default function Character({ isLocked }) {
       window.removeEventListener("wheel", handleWheel);
     };
   }, []);
+
+  // Handle keyboard toggles
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!isLocked) return;
+
+      if (e.code === "KeyV") {
+        setCameraMode((prev) => (prev === "TP" ? "FP" : "TP"));
+      }
+
+      if (e.code === "Digit1") {
+        setGameplayState("human");
+      }
+      if (e.code === "Digit2") {
+        setGameplayState("object");
+      }
+      if (e.code === "Digit3") {
+        setGameplayState("hunter");
+      }
+
+      if (e.code === "KeyE") {
+        if (gameplayState === "object" && hoveredProp) {
+          setActiveObject({
+            id: hoveredProp.id,
+            type: hoveredProp.type,
+            size: hoveredProp.size,
+            color: hoveredProp.color
+          });
+          setTransformTime(Date.now());
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isLocked, gameplayState, hoveredProp]);
 
   // Handle mouse movement for camera orbit
   useEffect(() => {
@@ -119,9 +132,11 @@ export default function Character({ isLocked }) {
     };
   }, [isLocked]);
 
-  // AABB Collision Detection and Resolution
+  // AABB Collision Detection and Resolution (unmodified movement math, just uses dynamic dimensions)
   const checkCollisions = (pos, vel) => {
     let grounded = false;
+    const currentRadius = playerRadiusRef.current;
+    const currentHeight = playerHeightRef.current;
 
     // Check world bounds first
     const limit = 98;
@@ -131,13 +146,18 @@ export default function Character({ isLocked }) {
     if (pos.z > limit) { pos.z = limit; vel.z = 0; }
 
     for (const obs of OBSTACLES) {
+      // Exclude player's active object itself from collider list when transformed
+      if (activeObject && obs.id === activeObject.id && gameplayState === "object") {
+        continue;
+      }
+
       // Player AABB
-      const pMinX = pos.x - playerRadius;
-      const pMaxX = pos.x + playerRadius;
-      const pMinZ = pos.z - playerRadius;
-      const pMaxZ = pos.z + playerRadius;
+      const pMinX = pos.x - currentRadius;
+      const pMaxX = pos.x + currentRadius;
+      const pMinZ = pos.z - currentRadius;
+      const pMaxZ = pos.z + currentRadius;
       const pMinY = pos.y;
-      const pMaxY = pos.y + playerHeight;
+      const pMaxY = pos.y + currentHeight;
 
       // Obstacle AABB
       const oMinX = obs.pos[0] - obs.size[0] / 2;
@@ -176,7 +196,7 @@ export default function Character({ isLocked }) {
       }
     }
 
-    // Floor collision (y = 0 is ground, but player base is at y = 0, so height is from y to y+height)
+    // Floor collision
     if (pos.y <= 0) {
       pos.y = 0;
       vel.y = Math.max(0, vel.y);
@@ -189,6 +209,36 @@ export default function Character({ isLocked }) {
   useFrame((state, delta) => {
     // Limit delta to prevent huge jumps when lagging
     const dt = Math.min(delta, 0.1);
+
+    // Dynamic scale adjustments based on current form
+    if (gameplayState === "object" && activeObject) {
+      playerHeightRef.current = Math.max(0.4, Math.min(3.5, activeObject.size[1]));
+      playerRadiusRef.current = Math.max(0.3, Math.min(1.8, Math.max(activeObject.size[0], activeObject.size[2]) / 2));
+    } else {
+      playerHeightRef.current = 1.8;
+      playerRadiusRef.current = 0.8;
+    }
+
+    // Scanning for closest interactable prop in Object state
+    if (gameplayState === "object") {
+      let closest = null;
+      let minD = 4.0;
+      for (const item of FURNITURE) {
+        // Don't scan the one we currently are
+        if (activeObject && item.id === activeObject.id) continue;
+        const itemPos = new THREE.Vector3(...item.pos);
+        const dist = position.current.distanceTo(itemPos);
+        if (dist < minD) {
+          minD = dist;
+          closest = item;
+        }
+      }
+      if (hoveredProp?.id !== closest?.id) {
+        setHoveredProp(closest);
+      }
+    } else {
+      if (hoveredProp !== null) setHoveredProp(null);
+    }
 
     const { forward, backward, left, right, jump } = keyboard.current;
 
@@ -207,21 +257,13 @@ export default function Character({ isLocked }) {
     }
 
     // 2. Set target speed and interpolate current velocity
-    const targetSpeed = keyboard.current.shift ? 10 : 4.5; // Walk at 4.5, run at 10
+    const targetSpeed = keyboard.current.shift ? 10 : 4.5;
     const targetVelX = moveDir.x * targetSpeed;
     const targetVelZ = moveDir.z * targetSpeed;
 
-    const acceleration = 10; // how fast we reach max speed
-    velocity.current.x = THREE.MathUtils.lerp(
-      velocity.current.x,
-      targetVelX,
-      acceleration * dt
-    );
-    velocity.current.z = THREE.MathUtils.lerp(
-      velocity.current.z,
-      targetVelZ,
-      acceleration * dt
-    );
+    const acceleration = 10;
+    velocity.current.x = THREE.MathUtils.lerp(velocity.current.x, targetVelX, acceleration * dt);
+    velocity.current.z = THREE.MathUtils.lerp(velocity.current.z, targetVelZ, acceleration * dt);
 
     // Apply gravity
     const gravity = 28;
@@ -237,24 +279,21 @@ export default function Character({ isLocked }) {
 
     // 4. Handle Jump
     if (isGrounded && jump) {
-      velocity.current.y = 11; // jump velocity
+      velocity.current.y = 11;
     }
 
-    // 5. Animate & Position Character Mesh
+    // 5. Animate Humanoid Mesh (Only if Human or Hunter is active)
     if (playerGroup.current) {
       playerGroup.current.position.copy(position.current);
 
-      // Smoothly rotate character toward movement direction
+      // Smoothly rotate player toward movement direction
       if (moveDir.lengthSq() > 0.001) {
         const targetAngle = Math.atan2(moveDir.x, moveDir.z);
         let diff = targetAngle - playerGroup.current.rotation.y;
-        
-        // Normalize angle to -PI to PI
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         playerGroup.current.rotation.y += diff * 12 * dt;
       }
 
-      // 5.1 Calculate velocity-based animation state
       const time = state.clock.getElapsedTime();
       const lateralSpeed = Math.sqrt(
         velocity.current.x * velocity.current.x +
@@ -266,27 +305,24 @@ export default function Character({ isLocked }) {
         animState = keyboard.current.shift ? "run" : "walk";
       }
 
-      // Track transitions for Takeoff / Landing crouch juice
       if (isGrounded && !wasGrounded.current) {
-        landCrouchTime.current = 0.15; // landed crouch timer
+        landCrouchTime.current = 0.15;
       }
       if (!isGrounded && wasGrounded.current && velocity.current.y > 0) {
-        takeoffCrouchTime.current = 0.1; // takeoff crouch timer
+        takeoffCrouchTime.current = 0.1;
       }
       wasGrounded.current = isGrounded;
 
-      // Decrement crouch timers
       if (landCrouchTime.current > 0) landCrouchTime.current -= dt;
       if (takeoffCrouchTime.current > 0) takeoffCrouchTime.current -= dt;
 
-      // Calculate takeoff/landing crouch offsets
       let crouchY = 0;
       let crouchKneeBend = 0;
       let crouchArmLift = 0;
 
       if (landCrouchTime.current > 0) {
         const progress = landCrouchTime.current / 0.15;
-        const intensity = Math.sin(progress * Math.PI); // 0 -> 1 -> 0 curve
+        const intensity = Math.sin(progress * Math.PI);
         crouchY = -0.15 * intensity;
         crouchKneeBend = 0.25 * intensity;
         crouchArmLift = -0.15 * intensity;
@@ -298,8 +334,7 @@ export default function Character({ isLocked }) {
         crouchArmLift = -0.1 * intensity;
       }
 
-      // Animate human bones/meshes
-      if (bodyMesh.current) {
+      if ((gameplayState === "human" || gameplayState === "hunter") && bodyMesh.current) {
         let bobOffset = 0;
         let targetTorsoX = 0;
         let targetTorsoY = 0;
@@ -312,13 +347,9 @@ export default function Character({ isLocked }) {
         let targetRightArmX = 0;
 
         if (animState === "idle") {
-          // Subtle breathing bob
           bobOffset = Math.sin(time * 2.5) * 0.02;
-          // Subtle breathing tilt
           targetTorsoX = Math.sin(time * 2.5) * 0.01;
-          // Slow head look around
           targetHeadY = Math.sin(time * 0.8) * 0.12;
-          // Arm breathing sway
           targetLeftArmX = Math.sin(time * 2.5) * 0.03;
           targetRightArmX = -Math.sin(time * 2.5) * 0.03;
         } else if (animState === "walk") {
@@ -326,82 +357,55 @@ export default function Character({ isLocked }) {
           const legAmp = 0.35;
           const armAmp = 0.30;
           
-          // Walking leg swing (opposite phases)
           targetLeftLegX = Math.sin(time * freq) * legAmp;
           targetRightLegX = -Math.sin(time * freq) * legAmp;
-
-          // Walking arm swing (opposite to legs)
           targetLeftArmX = -Math.sin(time * freq) * armAmp;
           targetRightArmX = Math.sin(time * freq) * armAmp;
-
-          // Torso bobbing (up and down twice per cycle)
           bobOffset = Math.abs(Math.sin(time * freq)) * 0.05 - 0.025;
-          // Torso tilt and twist
           targetTorsoX = 0.04 + Math.sin(time * freq) * 0.01;
           targetTorsoY = Math.sin(time * freq) * 0.05;
-          // Head counterbalance
           targetHeadY = -Math.sin(time * freq) * 0.02;
         } else if (animState === "run") {
           const freq = 11.0;
           const legAmp = 0.60;
           const armAmp = 0.55;
 
-          // Running leg swing
           targetLeftLegX = Math.sin(time * freq) * legAmp;
           targetRightLegX = -Math.sin(time * freq) * legAmp;
-
-          // Running arm swing
           targetLeftArmX = -Math.sin(time * freq) * armAmp;
           targetRightArmX = Math.sin(time * freq) * armAmp;
-
-          // Torso bobbing
           bobOffset = Math.abs(Math.sin(time * freq)) * 0.09 - 0.045;
-          // Torso forward lean & twist
           targetTorsoX = 0.12 + Math.sin(time * freq) * 0.02;
           targetTorsoY = Math.sin(time * freq) * 0.12;
-          // Head counterbalance & look down slightly
           targetHeadX = -0.04;
           targetHeadY = -Math.sin(time * freq) * 0.03;
         }
 
-        // Apply jump posture modifications (smoothly blend legs and arms to landing/jump positions)
         if (!isGrounded) {
-          // Knees slightly tucked (bend backward)
           targetLeftLegX = -0.15;
           targetRightLegX = -0.15;
-
-          // Arms relaxed (resting slightly forward)
           targetLeftArmX = 0.05;
           targetRightArmX = 0.05;
-
-          // Keep body/torso upright and look straight
           targetTorsoX = 0;
           targetTorsoY = 0;
           targetHeadX = 0;
           targetHeadY = 0;
-          
-          // No walking bob in air
           bobOffset = 0;
         }
 
-        // Combine takeoff/landing crouches
         bobOffset += crouchY;
         targetLeftLegX += crouchKneeBend;
         targetRightLegX += crouchKneeBend;
         targetLeftArmX += crouchArmLift;
         targetRightArmX += crouchArmLift;
 
-        // Smoothly interpolate actual limb/bone rotations to targets
         const lerpSpeed = 10;
         
         bodyMesh.current.position.y = THREE.MathUtils.lerp(bodyMesh.current.position.y, bobOffset, lerpSpeed * dt);
-        
-        // Disable procedural body rotation of root - keep upright!
         bodyMesh.current.rotation.x = 0;
         bodyMesh.current.rotation.y = 0;
         bodyMesh.current.rotation.z = 0;
 
-        // Apply rotation to torsoGroup instead
         if (torsoGroup.current) {
           torsoGroup.current.rotation.x = THREE.MathUtils.lerp(torsoGroup.current.rotation.x, targetTorsoX, lerpSpeed * dt);
           torsoGroup.current.rotation.y = THREE.MathUtils.lerp(torsoGroup.current.rotation.y, targetTorsoY, lerpSpeed * dt);
@@ -418,7 +422,6 @@ export default function Character({ isLocked }) {
         if (rightLeg.current) {
           rightLeg.current.rotation.x = THREE.MathUtils.lerp(rightLeg.current.rotation.x, targetRightLegX, lerpSpeed * dt);
         }
-
         if (leftArm.current) {
           leftArm.current.rotation.x = THREE.MathUtils.lerp(leftArm.current.rotation.x, targetLeftArmX, lerpSpeed * dt);
         }
@@ -427,224 +430,466 @@ export default function Character({ isLocked }) {
         }
       }
     }
+  });
 
-    // 6. Camera Follow System
-    const theta = mouseRotation.current.x;
-    const phi = mouseRotation.current.y;
+  const isTP = cameraMode === "TP" || transitionT.current > 0.1;
 
-    // Calculate directions
-    const backDir = new THREE.Vector3(
-      Math.sin(theta) * Math.cos(phi),
-      Math.sin(phi),
-      Math.cos(theta) * Math.cos(phi)
-    );
+  return (
+    <>
+      {/* 3D Camera Follow Logic */}
+      <CameraManager
+        cameraMode={cameraMode}
+        gameplayState={gameplayState}
+        activeObject={activeObject}
+        position={position}
+        mouseRotation={mouseRotation}
+        currentLookAt={currentLookAt}
+        zoomFactor={zoomFactor}
+        transitionT={transitionT}
+      />
 
-    const rightDir = new THREE.Vector3(
-      Math.cos(theta),
-      0,
-      -Math.sin(theta)
-    );
+      {/* Immersive FPS Gun overlay */}
+      {gameplayState === "hunter" && cameraMode === "FP" && transitionT.current < 0.1 && (
+        <FPWeapon />
+      )}
 
-    // Pivot is at player head (height = 1.8)
-    const pivotHeight = 1.8;
-    const pivot = new THREE.Vector3(
-      position.current.x,
-      position.current.y + pivotHeight,
-      position.current.z
-    );
+      {/* HTML HUD Panel */}
+      <Html fullscreen style={{ pointerEvents: "none" }}>
+        <div className="hud-container">
+          {/* Title Badge */}
+          <div className="hud-title-badge glass-panel">
+            <div className="hud-title-dot" />
+            <div className="hud-title-text">Become</div>
+          </div>
 
-    const shoulderOffset = 0.7;
-    const currentDistance = camDistance.current;
+          {/* Camera Mode Pill */}
+          <div className={`camera-pill glass-panel ${cameraMode.toLowerCase()}`}>
+            <div className="camera-status-dot" />
+            <div>
+              {cameraMode === "FP" ? "First Person" : "Third Person"}
+              <span className="camera-pill-key">V</span>
+            </div>
+          </div>
 
-    // Ideal camera position before collisions
-    const idealCamPos = new THREE.Vector3()
-      .copy(pivot)
-      .addScaledVector(backDir, currentDistance)
-      .addScaledVector(rightDir, shoulderOffset);
+          {/* FPS Crosshair */}
+          {cameraMode === "FP" && <div className="fps-crosshair" />}
 
-    // Cast ray from pivot to idealCamPos
-    const rayVec = new THREE.Vector3().subVectors(idealCamPos, pivot);
-    const rayLen = rayVec.length();
+          {/* Object Proximity prompt */}
+          {gameplayState === "object" && hoveredProp && (
+            <div className="interact-prompt glass-panel">
+              <span className="interact-key">E</span>
+              <span className="interact-text">Become {hoveredProp.type.replace(/_/g, " ")}</span>
+            </div>
+          )}
+
+          {/* Zoom Indicator */}
+          {cameraMode === "TP" && (
+            <div className="zoom-indicator-panel glass-panel">
+              <span className="zoom-icon">+</span>
+              <div className="zoom-bar-container">
+                <div
+                  className="zoom-bar-fill"
+                  style={{ height: `${zoomFactor.current * 100}%` }}
+                />
+              </div>
+              <span className="zoom-icon">-</span>
+            </div>
+          )}
+
+          {/* Bottom state selector */}
+          <div className="state-selector glass-panel">
+            <button
+              className={`state-btn ${gameplayState === "human" ? "active human" : ""}`}
+              onClick={() => setGameplayState("human")}
+            >
+              <span>Human</span>
+              <span className="state-btn-key">[1]</span>
+            </button>
+            <button
+              className={`state-btn ${gameplayState === "object" ? "active object" : ""}`}
+              onClick={() => setGameplayState("object")}
+            >
+              <span>Object</span>
+              <span className="state-btn-key">[2]</span>
+            </button>
+            <button
+              className={`state-btn ${gameplayState === "hunter" ? "active hunter" : ""}`}
+              onClick={() => setGameplayState("hunter")}
+            >
+              <span>Hunter</span>
+              <span className="state-btn-key">[3]</span>
+            </button>
+          </div>
+        </div>
+      </Html>
+
+      {/* Main player character ref group */}
+      <group ref={playerGroup}>
+        {/* Transform Sparkle effect */}
+        {Date.now() - transformTime < 600 && (
+          <Sparkles
+            count={60}
+            scale={2.0}
+            size={7}
+            speed={3.5}
+            noise={1.2}
+            color={gameplayState === "hunter" ? "#ef233c" : "#ffb703"}
+            position={[0, playerHeightRef.current / 2, 0]}
+          />
+        )}
+
+        {/* 1. Human Visual Model */}
+        {gameplayState === "human" && (
+          <group ref={bodyMesh} visible={isTP}>
+            {/* Torso Group (Hoodie & T-Shirt) - Pivot at hips Y = 0.7 */}
+            <group ref={torsoGroup} position={[0, 0.7, 0]}>
+              {/* Torso Hoodie Main Block */}
+              <mesh position={[0, 0.35, 0]} castShadow receiveShadow>
+                <boxGeometry args={[0.6, 0.68, 0.36]} />
+                <meshStandardMaterial color="#1d3557" roughness={0.85} />
+              </mesh>
+              
+              {/* Hoodie Bottom Hem Trim */}
+              <mesh position={[0, 0.03, 0]} castShadow>
+                <boxGeometry args={[0.61, 0.06, 0.37]} />
+                <meshStandardMaterial color="#1d3557" roughness={0.85} />
+              </mesh>
+
+              {/* Cream T-Shirt peeking out at bottom */}
+              <mesh position={[0, -0.02, 0]} castShadow>
+                <boxGeometry args={[0.57, 0.04, 0.34]} />
+                <meshStandardMaterial color="#f5ebe0" roughness={0.9} />
+              </mesh>
+
+              {/* Cream T-Shirt Collar peeking out at neck */}
+              <mesh position={[0, 0.69, 0]} castShadow>
+                <boxGeometry args={[0.2, 0.03, 0.2]} />
+                <meshStandardMaterial color="#f5ebe0" roughness={0.9} />
+              </mesh>
+
+              {/* Hoodie Hood folded back */}
+              <mesh position={[0, 0.52, -0.15]} castShadow>
+                <boxGeometry args={[0.42, 0.42, 0.16]} />
+                <meshStandardMaterial color="#1d3557" roughness={0.85} />
+              </mesh>
+
+              {/* Head & Hair Group - Y = 0.7 relative to hip pivot (1.4 absolute) */}
+              <group ref={headMesh} position={[0, 0.7, 0]}>
+                {/* Neck */}
+                <mesh position={[0, 0.05, 0]} castShadow>
+                  <boxGeometry args={[0.12, 0.1, 0.12]} />
+                  <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
+                </mesh>
+                
+                {/* Face/Head (Skin tone, no features) */}
+                <mesh position={[0, 0.2, 0]} castShadow>
+                  <boxGeometry args={[0.32, 0.32, 0.32]} />
+                  <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
+                </mesh>
+
+                {/* Minimal Face: Left Eye */}
+                <mesh position={[-0.07, 0.18, 0.161]} castShadow>
+                  <boxGeometry args={[0.05, 0.04, 0.01]} />
+                  <meshStandardMaterial color="#2d1a10" roughness={0.9} />
+                </mesh>
+
+                {/* Minimal Face: Right Eye */}
+                <mesh position={[0.07, 0.18, 0.161]} castShadow>
+                  <boxGeometry args={[0.05, 0.04, 0.01]} />
+                  <meshStandardMaterial color="#2d1a10" roughness={0.9} />
+                </mesh>
+
+                {/* Hair */}
+                <mesh position={[0, 0.32, 0.01]} castShadow>
+                  <boxGeometry args={[0.34, 0.12, 0.34]} />
+                  <meshStandardMaterial color="#4a3728" roughness={0.9} />
+                </mesh>
+                {/* Hair back trim */}
+                <mesh position={[0, 0.22, -0.15]} castShadow>
+                  <boxGeometry args={[0.34, 0.18, 0.05]} />
+                  <meshStandardMaterial color="#4a3728" roughness={0.9} />
+                </mesh>
+              </group>
+
+              {/* Left Arm Group - Y = 0.65 relative to hip pivot (1.35 absolute) */}
+              <group ref={leftArm} position={[-0.38, 0.65, 0]}>
+                {/* Hoodie Sleeve */}
+                <mesh position={[0, -0.225, 0]} castShadow>
+                  <boxGeometry args={[0.18, 0.45, 0.18]} />
+                  <meshStandardMaterial color="#1d3557" roughness={0.85} />
+                </mesh>
+                {/* Hand */}
+                <mesh position={[0, -0.5, 0]} castShadow>
+                  <boxGeometry args={[0.14, 0.12, 0.14]} />
+                  <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
+                </mesh>
+              </group>
+
+              {/* Right Arm Group - Y = 0.65 relative to hip pivot (1.35 absolute) */}
+              <group ref={rightArm} position={[0.38, 0.65, 0]}>
+                {/* Hoodie Sleeve */}
+                <mesh position={[0, -0.225, 0]} castShadow>
+                  <boxGeometry args={[0.18, 0.45, 0.18]} />
+                  <meshStandardMaterial color="#1d3557" roughness={0.85} />
+                </mesh>
+                {/* Hand */}
+                <mesh position={[0, -0.5, 0]} castShadow>
+                  <boxGeometry args={[0.14, 0.12, 0.14]} />
+                  <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
+                </mesh>
+              </group>
+            </group>
+
+            {/* Left Leg Group - attached directly to bodyMesh at hips (Y = 0.7 absolute) */}
+            <group ref={leftLeg} position={[-0.18, 0.7, 0]}>
+              {/* Pants */}
+              <mesh position={[0, -0.275, 0]} castShadow>
+                <boxGeometry args={[0.24, 0.55, 0.24]} />
+                <meshStandardMaterial color="#8c7866" roughness={0.9} />
+              </mesh>
+              {/* Sneaker */}
+              <mesh position={[0, -0.625, 0.03]} castShadow>
+                <boxGeometry args={[0.24, 0.15, 0.32]} />
+                <meshStandardMaterial color="#fafafa" roughness={0.8} />
+              </mesh>
+              {/* Sneaker Sole */}
+              <mesh position={[0, -0.71, 0.03]} castShadow>
+                <boxGeometry args={[0.25, 0.04, 0.33]} />
+                <meshStandardMaterial color="#a1a1aa" roughness={0.8} />
+              </mesh>
+            </group>
+
+            {/* Right Leg Group - attached directly to bodyMesh at hips (Y = 0.7 absolute) */}
+            <group ref={rightLeg} position={[0.18, 0.7, 0]}>
+              {/* Pants */}
+              <mesh position={[0, -0.275, 0]} castShadow>
+                <boxGeometry args={[0.24, 0.55, 0.24]} />
+                <meshStandardMaterial color="#8c7866" roughness={0.9} />
+              </mesh>
+              {/* Sneaker */}
+              <mesh position={[0, -0.625, 0.03]} castShadow>
+                <boxGeometry args={[0.24, 0.15, 0.32]} />
+                <meshStandardMaterial color="#fafafa" roughness={0.8} />
+              </mesh>
+              {/* Sneaker Sole */}
+              <mesh position={[0, -0.71, 0.03]} castShadow>
+                <boxGeometry args={[0.25, 0.04, 0.33]} />
+                <meshStandardMaterial color="#a1a1aa" roughness={0.8} />
+              </mesh>
+            </group>
+          </group>
+        )}
+
+        {/* 2. Hunter Visual Model (Tactical Cyber Soldier) */}
+        {gameplayState === "hunter" && (
+          <group ref={bodyMesh} visible={isTP}>
+            {/* Torso Group (Sci-fi Combat Armor) - Pivot at hips Y = 0.7 */}
+            <group ref={torsoGroup} position={[0, 0.7, 0]}>
+              {/* Torso Armor Main Block */}
+              <mesh position={[0, 0.35, 0]} castShadow receiveShadow>
+                <boxGeometry args={[0.6, 0.68, 0.36]} />
+                <meshStandardMaterial color="#1a1a1a" roughness={0.7} metalness={0.5} />
+              </mesh>
+              
+              {/* Glowing chest power core */}
+              <mesh position={[0, 0.45, 0.181]} castShadow>
+                <boxGeometry args={[0.15, 0.15, 0.01]} />
+                <meshStandardMaterial color="#ef233c" emissive="#ef233c" roughness={0.1} />
+              </mesh>
+
+              {/* Red shoulder pads */}
+              <mesh position={[-0.32, 0.65, 0]} castShadow>
+                <boxGeometry args={[0.16, 0.12, 0.22]} />
+                <meshStandardMaterial color="#ef233c" roughness={0.6} />
+              </mesh>
+              <mesh position={[0.32, 0.65, 0]} castShadow>
+                <boxGeometry args={[0.16, 0.12, 0.22]} />
+                <meshStandardMaterial color="#ef233c" roughness={0.6} />
+              </mesh>
+
+              {/* Head & Cyber Helmet Group - Y = 0.7 relative to hip pivot (1.4 absolute) */}
+              <group ref={headMesh} position={[0, 0.7, 0]}>
+                {/* Cyber Helmet */}
+                <mesh position={[0, 0.22, 0.02]} castShadow>
+                  <boxGeometry args={[0.34, 0.34, 0.34]} />
+                  <meshStandardMaterial color="#111111" roughness={0.6} metalness={0.6} />
+                </mesh>
+                {/* Glowing Red Visor */}
+                <mesh position={[0, 0.24, 0.181]} castShadow>
+                  <boxGeometry args={[0.26, 0.08, 0.02]} />
+                  <meshStandardMaterial color="#ef233c" emissive="#ef233c" roughness={0.1} />
+                </mesh>
+                {/* Cyber antenna */}
+                <mesh position={[-0.18, 0.28, -0.05]} castShadow>
+                  <boxGeometry args={[0.02, 0.14, 0.02]} />
+                  <meshStandardMaterial color="#ef233c" roughness={0.5} />
+                </mesh>
+              </group>
+
+              {/* Left Arm Group - Y = 0.65 relative to hip pivot (1.35 absolute) */}
+              <group ref={leftArm} position={[-0.38, 0.65, 0]}>
+                <mesh position={[0, -0.225, 0]} castShadow>
+                  <boxGeometry args={[0.18, 0.45, 0.18]} />
+                  <meshStandardMaterial color="#1a1a1a" roughness={0.7} metalness={0.3} />
+                </mesh>
+                {/* Red Cuff */}
+                <mesh position={[0, -0.42, 0]} castShadow>
+                  <boxGeometry args={[0.19, 0.06, 0.19]} />
+                  <meshStandardMaterial color="#ef233c" roughness={0.5} />
+                </mesh>
+                {/* Hand */}
+                <mesh position={[0, -0.5, 0]} castShadow>
+                  <boxGeometry args={[0.14, 0.12, 0.14]} />
+                  <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
+                </mesh>
+              </group>
+
+              {/* Right Arm Group - Y = 0.65 relative to hip pivot (1.35 absolute) */}
+              <group ref={rightArm} position={[0.38, 0.65, 0]}>
+                <mesh position={[0, -0.225, 0]} castShadow>
+                  <boxGeometry args={[0.18, 0.45, 0.18]} />
+                  <meshStandardMaterial color="#1a1a1a" roughness={0.7} metalness={0.3} />
+                </mesh>
+                {/* Red Cuff */}
+                <mesh position={[0, -0.42, 0]} castShadow>
+                  <boxGeometry args={[0.19, 0.06, 0.19]} />
+                  <meshStandardMaterial color="#ef233c" roughness={0.5} />
+                </mesh>
+                {/* Hand */}
+                <mesh position={[0, -0.5, 0]} castShadow>
+                  <boxGeometry args={[0.14, 0.12, 0.14]} />
+                  <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
+                </mesh>
+                
+                {/* TP Laser Rifle attached to arm */}
+                <group position={[0, -0.42, 0.18]} rotation={[-0.05, 0, 0]}>
+                  {/* Main Gun Body */}
+                  <mesh castShadow receiveShadow>
+                    <boxGeometry args={[0.08, 0.12, 0.5]} />
+                    <meshStandardMaterial color="#1f1f23" roughness={0.5} metalness={0.8} />
+                  </mesh>
+                  {/* Gun Barrel */}
+                  <mesh position={[0, 0, -0.3]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+                    <cylinderGeometry args={[0.02, 0.02, 0.3]} />
+                    <meshStandardMaterial color="#71717a" roughness={0.4} metalness={0.7} />
+                  </mesh>
+                  {/* Scope */}
+                  <mesh position={[0, 0.07, -0.05]} castShadow>
+                    <boxGeometry args={[0.03, 0.04, 0.15]} />
+                    <meshStandardMaterial color="#111" roughness={0.8} />
+                  </mesh>
+                  {/* Glowing Laser Sight (Crimson) */}
+                  <mesh position={[0, 0.015, -0.2]} castShadow>
+                    <boxGeometry args={[0.008, 0.008, 0.25]} />
+                    <meshStandardMaterial color="#ef233c" emissive="#ef233c" roughness={0.1} />
+                  </mesh>
+                </group>
+              </group>
+            </group>
+
+            {/* Left Leg Group */}
+            <group ref={leftLeg} position={[-0.18, 0.7, 0]}>
+              <mesh position={[0, -0.275, 0]} castShadow>
+                <boxGeometry args={[0.24, 0.55, 0.24]} />
+                <meshStandardMaterial color="#1a1a1a" roughness={0.7} />
+              </mesh>
+              <mesh position={[0, -0.625, 0.03]} castShadow>
+                <boxGeometry args={[0.24, 0.15, 0.32]} />
+                <meshStandardMaterial color="#ef233c" roughness={0.8} />
+              </mesh>
+              <mesh position={[0, -0.71, 0.03]} castShadow>
+                <boxGeometry args={[0.25, 0.04, 0.33]} />
+                <meshStandardMaterial color="#111" roughness={0.8} />
+              </mesh>
+            </group>
+
+            {/* Right Leg Group */}
+            <group ref={rightLeg} position={[0.18, 0.7, 0]}>
+              <mesh position={[0, -0.275, 0]} castShadow>
+                <boxGeometry args={[0.24, 0.55, 0.24]} />
+                <meshStandardMaterial color="#1a1a1a" roughness={0.7} />
+              </mesh>
+              <mesh position={[0, -0.625, 0.03]} castShadow>
+                <boxGeometry args={[0.24, 0.15, 0.32]} />
+                <meshStandardMaterial color="#ef233c" roughness={0.8} />
+              </mesh>
+              <mesh position={[0, -0.71, 0.03]} castShadow>
+                <boxGeometry args={[0.25, 0.04, 0.33]} />
+                <meshStandardMaterial color="#111" roughness={0.8} />
+              </mesh>
+            </group>
+          </group>
+        )}
+
+        {/* 3. Transformed Object Visual Model */}
+        {gameplayState === "object" && activeObject && (
+          <group visible={isTP} position={[0, activeObject.size[1] / 2, 0]}>
+            <FurnitureItem
+              type={activeObject.type}
+              pos={[0, 0, 0]}
+              size={activeObject.size}
+              color={activeObject.color}
+            />
+          </group>
+        )}
+      </group>
+    </>
+  );
+}
+
+// First Person immersive laser rifle overlay component
+function FPWeapon() {
+  const { camera } = useThree();
+  const groupRef = useRef();
+
+  useFrame((state) => {
+    if (!groupRef.current) return;
     
-    let minT = 1.0; // range 0 to 1
+    // Copy camera position and orientation client-side
+    groupRef.current.position.copy(camera.position);
+    groupRef.current.quaternion.copy(camera.quaternion);
 
-    if (rayLen > 0.001) {
-      // Virtual ceiling and floor bounding boxes
-      const cameraObstacles = [
-        ...WALLS,
-        { pos: [0, 5.9, 5], size: [60, 0.2, 50] }, // Ceiling
-        { pos: [0, 0.1, 5], size: [60, 0.2, 50] }  // Floor
-      ];
-
-      for (const wall of cameraObstacles) {
-        const t = checkWallCollision(pivot, rayVec, wall);
-        if (t !== null && t < minT) {
-          minT = t;
-        }
-      }
+    const time = state.clock.getElapsedTime();
+    
+    // Smooth breathing bobbing
+    const breathY = Math.sin(time * 2.2) * 0.0035;
+    const breathX = Math.cos(time * 1.1) * 0.002;
+    
+    // Apply offset bobs directly to the first-person gun mesh group
+    const gunMesh = groupRef.current.children[0];
+    if (gunMesh) {
+      gunMesh.position.y = -0.22 + breathY;
+      gunMesh.position.x = 0.22 + breathX;
     }
-
-    // Apply safety margin (e.g. 0.25 units) to prevent near plane clipping through wall
-    const safetyMargin = 0.25;
-    const finalDistance = Math.max(0.6, rayLen * minT - safetyMargin);
-
-    const targetCamPos = new THREE.Vector3()
-      .copy(pivot)
-      .addScaledVector(rayVec.clone().normalize(), finalDistance);
-
-    // Smoothly interpolate camera position
-    camera.position.lerp(targetCamPos, 12 * dt);
-
-    // Look-at target (slightly offset horizontally for shoulder framing)
-    const targetLookAt = new THREE.Vector3()
-      .copy(pivot)
-      .addScaledVector(rightDir, shoulderOffset);
-
-    // Smoothly interpolate the lookAt position to avoid camera jitters
-    currentLookAt.current.lerp(targetLookAt, 12 * dt);
-    camera.lookAt(currentLookAt.current);
   });
 
   return (
-    <group ref={playerGroup}>
-      {/* Visual representations of the player */}
-      <group ref={bodyMesh}>
-        {/* Torso Group (Hoodie & T-Shirt) - Pivot at hips Y = 0.7 */}
-        <group ref={torsoGroup} position={[0, 0.7, 0]}>
-          {/* Torso Hoodie Main Block */}
-          <mesh position={[0, 0.35, 0]} castShadow receiveShadow>
-            <boxGeometry args={[0.6, 0.68, 0.36]} />
-            <meshStandardMaterial color="#1d3557" roughness={0.85} /> {/* Muted Dark Blue Hoodie */}
-          </mesh>
-          
-          {/* Hoodie Bottom Hem Trim */}
-          <mesh position={[0, 0.03, 0]} castShadow>
-            <boxGeometry args={[0.61, 0.06, 0.37]} />
-            <meshStandardMaterial color="#1d3557" roughness={0.85} />
-          </mesh>
-
-          {/* Cream T-Shirt peeking out at bottom */}
-          <mesh position={[0, -0.02, 0]} castShadow>
-            <boxGeometry args={[0.57, 0.04, 0.34]} />
-            <meshStandardMaterial color="#f5ebe0" roughness={0.9} /> {/* Cream T-Shirt */}
-          </mesh>
-
-          {/* Cream T-Shirt Collar peeking out at neck */}
-          <mesh position={[0, 0.69, 0]} castShadow>
-            <boxGeometry args={[0.2, 0.03, 0.2]} />
-            <meshStandardMaterial color="#f5ebe0" roughness={0.9} />
-          </mesh>
-
-          {/* Hoodie Hood folded back */}
-          <mesh position={[0, 0.52, -0.15]} castShadow>
-            <boxGeometry args={[0.42, 0.42, 0.16]} />
-            <meshStandardMaterial color="#1d3557" roughness={0.85} />
-          </mesh>
-
-          {/* Head & Hair Group - Y = 0.7 relative to hip pivot (1.4 absolute) */}
-          <group ref={headMesh} position={[0, 0.7, 0]}>
-            {/* Neck */}
-            <mesh position={[0, 0.05, 0]} castShadow>
-              <boxGeometry args={[0.12, 0.1, 0.12]} />
-              <meshStandardMaterial color="#f5ebe0" roughness={0.7} /> {/* Skin */}
-            </mesh>
-            
-            {/* Face/Head (Skin tone, no features) */}
-            <mesh position={[0, 0.2, 0]} castShadow>
-              <boxGeometry args={[0.32, 0.32, 0.32]} />
-              <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
-            </mesh>
-
-            {/* Minimal Face: Left Eye */}
-            <mesh position={[-0.07, 0.18, 0.161]} castShadow>
-              <boxGeometry args={[0.05, 0.04, 0.01]} />
-              <meshStandardMaterial color="#2d1a10" roughness={0.9} />
-            </mesh>
-
-            {/* Minimal Face: Right Eye */}
-            <mesh position={[0.07, 0.18, 0.161]} castShadow>
-              <boxGeometry args={[0.05, 0.04, 0.01]} />
-              <meshStandardMaterial color="#2d1a10" roughness={0.9} />
-            </mesh>
-
-            {/* Hair (Short low-poly brown hair block on top) */}
-            <mesh position={[0, 0.32, 0.01]} castShadow>
-              <boxGeometry args={[0.34, 0.12, 0.34]} />
-              <meshStandardMaterial color="#4a3728" roughness={0.9} /> {/* Brown Hair */}
-            </mesh>
-            {/* Hair back trim */}
-            <mesh position={[0, 0.22, -0.15]} castShadow>
-              <boxGeometry args={[0.34, 0.18, 0.05]} />
-              <meshStandardMaterial color="#4a3728" roughness={0.9} />
-            </mesh>
-          </group>
-
-          {/* Left Arm Group - Y = 0.65 relative to hip pivot (1.35 absolute) */}
-          <group ref={leftArm} position={[-0.38, 0.65, 0]}>
-            {/* Hoodie Sleeve */}
-            <mesh position={[0, -0.225, 0]} castShadow>
-              <boxGeometry args={[0.18, 0.45, 0.18]} />
-              <meshStandardMaterial color="#1d3557" roughness={0.85} />
-            </mesh>
-            {/* Hand */}
-            <mesh position={[0, -0.5, 0]} castShadow>
-              <boxGeometry args={[0.14, 0.12, 0.14]} />
-              <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
-            </mesh>
-          </group>
-
-          {/* Right Arm Group - Y = 0.65 relative to hip pivot (1.35 absolute) */}
-          <group ref={rightArm} position={[0.38, 0.65, 0]}>
-            {/* Hoodie Sleeve */}
-            <mesh position={[0, -0.225, 0]} castShadow>
-              <boxGeometry args={[0.18, 0.45, 0.18]} />
-              <meshStandardMaterial color="#1d3557" roughness={0.85} />
-            </mesh>
-            {/* Hand */}
-            <mesh position={[0, -0.5, 0]} castShadow>
-              <boxGeometry args={[0.14, 0.12, 0.14]} />
-              <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
-            </mesh>
-          </group>
-        </group>
-
-        {/* Left Leg Group - attached directly to bodyMesh at hips (Y = 0.7 absolute) */}
-        <group ref={leftLeg} position={[-0.18, 0.7, 0]}>
-          {/* Pants (Loose Brown Pants) */}
-          <mesh position={[0, -0.275, 0]} castShadow>
-            <boxGeometry args={[0.24, 0.55, 0.24]} />
-            <meshStandardMaterial color="#8c7866" roughness={0.9} /> {/* Brown Loose Pants */}
-          </mesh>
-          {/* Sneaker (White Shoes) */}
-          <mesh position={[0, -0.625, 0.03]} castShadow>
-            <boxGeometry args={[0.24, 0.15, 0.32]} />
-            <meshStandardMaterial color="#fafafa" roughness={0.8} /> {/* White Sneakers */}
-          </mesh>
-          {/* Sneaker Sole (Grey) */}
-          <mesh position={[0, -0.71, 0.03]} castShadow>
-            <boxGeometry args={[0.25, 0.04, 0.33]} />
-            <meshStandardMaterial color="#a1a1aa" roughness={0.8} />
-          </mesh>
-        </group>
-
-        {/* Right Leg Group - attached directly to bodyMesh at hips (Y = 0.7 absolute) */}
-        <group ref={rightLeg} position={[0.18, 0.7, 0]}>
-          {/* Pants (Loose Brown Pants) */}
-          <mesh position={[0, -0.275, 0]} castShadow>
-            <boxGeometry args={[0.24, 0.55, 0.24]} />
-            <meshStandardMaterial color="#8c7866" roughness={0.9} />
-          </mesh>
-          {/* Sneaker (White Shoes) */}
-          <mesh position={[0, -0.625, 0.03]} castShadow>
-            <boxGeometry args={[0.24, 0.15, 0.32]} />
-            <meshStandardMaterial color="#fafafa" roughness={0.8} />
-          </mesh>
-          {/* Sneaker Sole (Grey) */}
-          <mesh position={[0, -0.71, 0.03]} castShadow>
-            <boxGeometry args={[0.25, 0.04, 0.33]} />
-            <meshStandardMaterial color="#a1a1aa" roughness={0.8} />
-          </mesh>
-        </group>
+    <group ref={groupRef}>
+      {/* Position gun mesh relative to camera: right (0.22), down (-0.22), forward (-0.45) */}
+      <group position={[0.22, -0.22, -0.45]} rotation={[-0.05, -0.1, 0.02]}>
+        {/* Gun Body */}
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[0.07, 0.1, 0.45]} />
+          <meshStandardMaterial color="#1f1f23" roughness={0.55} metalness={0.8} />
+        </mesh>
+        
+        {/* Gun Barrel */}
+        <mesh position={[0, 0, -0.3]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.025, 0.025, 0.3]} />
+          <meshStandardMaterial color="#71717a" roughness={0.4} metalness={0.7} />
+        </mesh>
+        
+        {/* Scope */}
+        <mesh position={[0, 0.07, -0.05]} castShadow>
+          <boxGeometry args={[0.03, 0.04, 0.15]} />
+          <meshStandardMaterial color="#111" roughness={0.8} />
+        </mesh>
+        
+        {/* Laser Sight Line (Glowing Crimson) */}
+        <mesh position={[0, 0.015, -0.2]} castShadow>
+          <boxGeometry args={[0.008, 0.008, 0.25]} />
+          <meshStandardMaterial color="#ff002b" emissive="#ff002b" roughness={0.1} />
+        </mesh>
       </group>
     </group>
   );

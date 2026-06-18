@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React from "react";
 import * as THREE from "three";
 import { WALLS, FURNITURE, DECORATIONS } from "../data/mapData";
@@ -732,7 +733,7 @@ function BookStack({ pos, size, color }) {
 }
 
 // Route to correct furniture component
-function FurnitureItem({ type, pos, size, color }) {
+export function FurnitureItem({ type, pos, size, color }) {
   switch (type) {
     case "cardboard_box":
       return <CardboardBox pos={pos} size={size} color={color} />;
