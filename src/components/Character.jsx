@@ -112,15 +112,8 @@ export default function Character({ isLocked }) {
   // Transformation states and refs
   const [transformProp, setTransformProp] = useState(null);
   const [yOffset, setYOffset] = useState(0);
-  const [transformScale, setTransformScale] = useState([1, 1, 1]);
 
-  useEffect(() => {
-    if (transformProp) {
-      setTransformScale(transformProp.scale || [1, 1, 1]);
-    } else {
-      setTransformScale([1, 1, 1]);
-    }
-  }, [transformProp]);
+  const transformScale = transformProp ? (transformProp.scale || [1, 1, 1]) : [1, 1, 1];
 
   const nearestPropRef = useRef(null);
   const scanTimer = useRef(0);
@@ -251,21 +244,22 @@ export default function Character({ isLocked }) {
 
     const applyTargetAlignment = (target) => {
       // Inherit rotation
-      let targetRotY = 0;
-      if (Array.isArray(target.rot)) targetRotY = target.rot[1];
-      else if (Array.isArray(target.rotation)) targetRotY = target.rotation[1];
-      else if (typeof target.rotation === "number") targetRotY = target.rotation;
+      let targetRotY = null;
+      if (Array.isArray(target.rot)) {
+        targetRotY = target.rot[1];
+      } else if (Array.isArray(target.rotation)) {
+        targetRotY = target.rotation[1];
+      } else if (typeof target.rotation === "number") {
+        targetRotY = target.rotation;
+      }
 
-      // Normalize and snap to 0, 90, 180, 270 if axis-aligned (1 degree tolerance)
-      const deg = (targetRotY * 180) / Math.PI;
-      const normalizedDeg = ((deg % 360) + 360) % 360;
-      const remainder = normalizedDeg % 90;
-      const isAxisAligned = Math.min(remainder, 90 - remainder) < 1.0;
-
-      let finalRotY = targetRotY;
-      if (isAxisAligned) {
-        const nearest90 = Math.round(normalizedDeg / 90) * 90;
-        finalRotY = ((nearest90 % 360) * Math.PI) / 180;
+      let finalRotY;
+      if (targetRotY !== null && targetRotY !== undefined) {
+        // Source prop has rotation -> copy exact yaw
+        finalRotY = targetRotY;
+      } else {
+        // Source prop has no stored rotation -> default to player yaw
+        finalRotY = playerGroup.current ? playerGroup.current.rotation.y : 0;
       }
 
       setTransformProp({
