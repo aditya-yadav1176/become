@@ -352,15 +352,30 @@ export function TVStand({ pos, size, color }) {
 // TV Screen
 export function TVScreen({ pos, size, color }) {
   const [w, h, d] = size;
+  const standHeight = 0.6;
+  const screenHeight = h - standHeight;
+  
   return (
     <group position={pos}>
-      <mesh castShadow>
-        <boxGeometry args={[w, h, d]} />
+      {/* Screen */}
+      <mesh castShadow position={[0, standHeight/2, 0]}>
+        <boxGeometry args={[w, screenHeight, d]} />
         <meshStandardMaterial color="#18181b" roughness={0.5} />
       </mesh>
-      <mesh position={[0, 0, -d/2 - 0.01]}>
-        <boxGeometry args={[w - 0.2, h - 0.2, 0.01]} />
-        <meshStandardMaterial color="#27272a" roughness={0.2} metalness={0.9} />
+      {/* Glossy Display panel facing front (negative Z) */}
+      <mesh position={[0, standHeight/2, -d/2 - 0.005]}>
+        <boxGeometry args={[w - 0.1, screenHeight - 0.1, 0.01]} />
+        <meshStandardMaterial color="#09090b" roughness={0.15} metalness={0.9} />
+      </mesh>
+      {/* Stand Pole */}
+      <mesh castShadow position={[0, -h/2 + 0.32, 0]}>
+        <cylinderGeometry args={[0.06, 0.06, 0.56, 8]} />
+        <meshStandardMaterial color="#1f2937" metalness={0.8} roughness={0.2} />
+      </mesh>
+      {/* Stand Base Plate */}
+      <mesh castShadow position={[0, -h/2 + 0.02, 0]}>
+        <boxGeometry args={[0.8, 0.04, 0.5]} />
+        <meshStandardMaterial color="#1f2937" metalness={0.8} roughness={0.2} />
       </mesh>
     </group>
   );
@@ -669,67 +684,94 @@ export function BookStack({ pos, size, color }) {
 }
 
 // Route to correct furniture component
-export function FurnitureItem({ type, pos, size, color }) {
-  switch (type) {
-    case "chair":
-      return <Chair pos={pos} size={size} color={color} />;
-    case "cardboard_box":
-      return <CardboardBox pos={pos} size={size} color={color} />;
-    case "wooden_crate":
-      return <WoodenCrate pos={pos} size={size} color={color} />;
-    case "book_stack":
-      return <BookStack pos={pos} size={size} color={color} />;
-    case "sofa_main":
-    case "sofa_single":
-    case "sofa_l":
-      return <Sofa pos={pos} size={size} color={color} />;
-    case "coffee_table":
-    case "table":
-    case "desk":
-    case "side_table":
-    case "nightstand":
-    case "bed_bench":
-      return <Table pos={pos} size={size} color={color} />;
-    case "bookshelf":
-      return <Bookshelf pos={pos} size={size} color={color} />;
-    case "plant":
-      return <Plant pos={pos} size={size} color={color} />;
-    case "lamp":
-      return <Lamp pos={pos} size={size} color={color} />;
-    case "kitchen_island":
-      return <KitchenIsland pos={pos} size={size} color={color} />;
-    case "counter":
-      return <Counter pos={pos} size={size} color={color} />;
-    case "fridge":
-      return <Refrigerator pos={pos} size={size} color={color} />;
-    case "wardrobe":
-      return <Wardrobe pos={pos} size={size} color={color} />;
-    case "cushion":
-      return <Cushion pos={pos} size={size} color={color} />;
-    case "trash_bin":
-      return <TrashBin pos={pos} size={size} color={color} />;
-    case "microwave":
-      return <Microwave pos={pos} size={size} color={color} />;
-    case "coffee_maker":
-      return <CoffeeMaker pos={pos} size={size} color={color} />;
-    case "toaster":
-      return <Toaster pos={pos} size={size} color={color} />;
-    case "blender":
-      return <Blender pos={pos} size={size} color={color} />;
-    case "fruit_bowl":
-      return <FruitBowl pos={pos} size={size} color={color} />;
-    case "mug":
-      return <Mug pos={pos} size={size} color={color} />;
-    case "desk_lamp":
-      return <DeskLamp pos={pos} size={size} color={color} />;
-    case "laundry_basket":
-      return <LaundryBasket pos={pos} size={size} color={color} />;
-    default:
-      return (
-        <mesh position={pos} castShadow receiveShadow>
-          <boxGeometry args={size} />
-          <meshStandardMaterial color={color} roughness={0.6} />
-        </mesh>
-      );
-  }
+// Route to correct furniture component
+export function FurnitureItem({ type, pos, size, color, rotation, childrenProps }) {
+  const rotationEuler = rotation ? (Array.isArray(rotation) ? rotation : [0, rotation, 0]) : [0, 0, 0];
+
+  const renderItem = () => {
+    switch (type) {
+      case "chair":
+        return <Chair pos={[0, 0, 0]} size={size} color={color} />;
+      case "cardboard_box":
+        return <CardboardBox pos={[0, 0, 0]} size={size} color={color} />;
+      case "wooden_crate":
+        return <WoodenCrate pos={[0, 0, 0]} size={size} color={color} />;
+      case "book_stack":
+        return <BookStack pos={[0, 0, 0]} size={size} color={color} />;
+      case "sofa_main":
+      case "sofa_single":
+      case "sofa_l":
+        return <Sofa pos={[0, 0, 0]} size={size} color={color} />;
+      case "coffee_table":
+      case "table":
+      case "desk":
+      case "side_table":
+      case "nightstand":
+      case "bed_bench":
+        return <Table pos={[0, 0, 0]} size={size} color={color} />;
+      case "bookshelf":
+        return <Bookshelf pos={[0, 0, 0]} size={size} color={color} />;
+      case "plant":
+        return <Plant pos={[0, 0, 0]} size={size} color={color} />;
+      case "lamp":
+        return <Lamp pos={[0, 0, 0]} size={size} color={color} />;
+      case "kitchen_island":
+        return <KitchenIsland pos={[0, 0, 0]} size={size} color={color} />;
+      case "counter":
+        return <Counter pos={[0, 0, 0]} size={size} color={color} />;
+      case "fridge":
+        return <Refrigerator pos={[0, 0, 0]} size={size} color={color} />;
+      case "wardrobe":
+        return <Wardrobe pos={[0, 0, 0]} size={size} color={color} />;
+      case "bed":
+        return <Bed pos={[0, 0, 0]} size={size} color={color} />;
+      case "tv_stand":
+        return <TVStand pos={[0, 0, 0]} size={size} color={color} />;
+      case "tv_screen":
+        return <TVScreen pos={[0, 0, 0]} size={size} color={color} />;
+      case "cushion":
+        return <Cushion pos={[0, 0, 0]} size={size} color={color} />;
+      case "trash_bin":
+        return <TrashBin pos={[0, 0, 0]} size={size} color={color} />;
+      case "microwave":
+        return <Microwave pos={[0, 0, 0]} size={size} color={color} />;
+      case "coffee_maker":
+        return <CoffeeMaker pos={[0, 0, 0]} size={size} color={color} />;
+      case "toaster":
+        return <Toaster pos={[0, 0, 0]} size={size} color={color} />;
+      case "blender":
+        return <Blender pos={[0, 0, 0]} size={size} color={color} />;
+      case "fruit_bowl":
+        return <FruitBowl pos={[0, 0, 0]} size={size} color={color} />;
+      case "mug":
+        return <Mug pos={[0, 0, 0]} size={size} color={color} />;
+      case "desk_lamp":
+        return <DeskLamp pos={[0, 0, 0]} size={size} color={color} />;
+      case "laundry_basket":
+        return <LaundryBasket pos={[0, 0, 0]} size={size} color={color} />;
+      default:
+        return (
+          <mesh position={[0, 0, 0]} castShadow receiveShadow>
+            <boxGeometry args={size} />
+            <meshStandardMaterial color={color} roughness={0.6} />
+          </mesh>
+        );
+    }
+  };
+
+  return (
+    <group position={pos} rotation={rotationEuler}>
+      {renderItem()}
+      {childrenProps && childrenProps.map((child) => (
+        <FurnitureItem
+          key={child.id}
+          type={child.type}
+          pos={child.localPos || [0, 0, 0]}
+          size={child.size}
+          color={child.color}
+          rotation={child.localRot || [0, 0, 0]}
+        />
+      ))}
+    </group>
+  );
 }

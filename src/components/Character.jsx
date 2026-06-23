@@ -13,7 +13,8 @@ const isAllowedProp = (item) => {
     "cardboard_box",
     "wooden_crate",
     "small_table",
-    "stool"
+    "stool",
+    "tv_screen"
   ];
   return allowed.includes(item.type);
 };
@@ -24,7 +25,8 @@ const getPriorityWeight = (type) => {
   if (type === "plant") return 3;
   if (type === "lamp" || type === "desk_lamp") return 4;
   if (type === "stool") return 5;
-  return 6; // small_table or others
+  if (type === "tv_screen") return 6;
+  return 7; // small_table or others
 };
 
 const getPropDisplayName = (type) => {
@@ -36,6 +38,7 @@ const getPropDisplayName = (type) => {
   if (type === "cardboard_box") return "Box";
   if (type === "wooden_crate") return "Crate";
   if (type === "small_table") return "Table";
+  if (type === "tv_screen") return "TV";
   return type;
 };
 
@@ -44,6 +47,7 @@ const getPropSpeedFactor = (type) => {
   if (type === "plant") return 0.8;
   if (type === "cardboard_box" || type === "wooden_crate") return 0.7;
   if (type === "lamp" || type === "desk_lamp") return 0.6;
+  if (type === "tv_screen") return 0.5;
   return 0.75; // Fallback
 };
 
@@ -191,6 +195,105 @@ export default function Character({ isLocked }) {
     };
   }, [isLocked]);
 
+  const resolvePlayerOverlap = (pos, radius, height, ignoreId = null) => {
+    const maxIterations = 5;
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let overlapCount = 0;
+
+      for (const obs of OBSTACLES) {
+        if (ignoreId && obs.id === ignoreId) {
+          continue;
+        }
+
+        // Obstacle AABB
+        const oMinX = obs.pos[0] - obs.size[0] / 2;
+        const oMaxX = obs.pos[0] + obs.size[0] / 2;
+        const oMinZ = obs.pos[2] - obs.size[2] / 2;
+        const oMaxZ = obs.pos[2] + obs.size[2] / 2;
+        const oMinY = obs.pos[1] - obs.size[1] / 2;
+        const oMaxY = obs.pos[1] + obs.size[1] / 2;
+
+        // Player AABB approximation
+        const pMinX = pos.x - radius;
+        const pMaxX = pos.x + radius;
+        const pMinZ = pos.z - radius;
+        const pMaxZ = pos.z + radius;
+        const pMinY = pos.y;
+        const pMaxY = pos.y + height;
+
+        const overlapX = Math.min(pMaxX, oMaxX) - Math.max(pMinX, oMinX);
+        const overlapZ = Math.min(pMaxZ, oMaxZ) - Math.max(pMinZ, oMinZ);
+        const overlapY = Math.min(pMaxY, oMaxY) - Math.max(pMinY, oMinY);
+
+        if (overlapX > 0 && overlapZ > 0 && overlapY > 0) {
+          overlapCount++;
+          // Push along shallowest axis
+          if (overlapX < overlapZ && overlapX < overlapY) {
+            const pushX = pos.x > obs.pos[0] ? (overlapX + 0.05) : -(overlapX + 0.05);
+            pos.x += pushX;
+          } else if (overlapZ < overlapX && overlapZ < overlapY) {
+            const pushZ = pos.z > obs.pos[2] ? (overlapZ + 0.05) : -(overlapZ + 0.05);
+            pos.z += pushZ;
+          } else {
+            if (pos.y > obs.pos[1]) {
+              pos.y += (overlapY + 0.05);
+            } else {
+              pos.y -= (overlapY + 0.05);
+            }
+          }
+        }
+      }
+
+      // Check world bounds limit
+      const limit = 98;
+      if (pos.x < -limit) { pos.x = -limit; }
+      if (pos.x > limit) { pos.x = limit; }
+      if (pos.z < -limit) { pos.z = -limit; }
+      if (pos.z > limit) { pos.z = limit; }
+
+      if (overlapCount === 0) {
+        break;
+      }
+    }
+
+    // Ground snap post-separation
+    let highestGroundY = 0;
+    for (const obs of OBSTACLES) {
+      if (ignoreId && obs.id === ignoreId) {
+        continue;
+      }
+      const oMinX = obs.pos[0] - obs.size[0] / 2;
+      const oMaxX = obs.pos[0] + obs.size[0] / 2;
+      const oMinZ = obs.pos[2] - obs.size[2] / 2;
+      const oMaxZ = obs.pos[2] + obs.size[2] / 2;
+      const oMaxY = obs.pos[1] + obs.size[1] / 2;
+
+      const pMinX = pos.x - radius;
+      const pMaxX = pos.x + radius;
+      const pMinZ = pos.z - radius;
+      const pMaxZ = pos.z + radius;
+
+      const overlapX = Math.min(pMaxX, oMaxX) - Math.max(pMinX, oMinX);
+      const overlapZ = Math.min(pMaxZ, oMaxZ) - Math.max(pMinZ, oMinZ);
+
+      if (overlapX > 0 && overlapZ > 0) {
+        if (oMaxY <= pos.y + 0.5) {
+          if (oMaxY > highestGroundY) {
+            highestGroundY = oMaxY;
+          }
+        }
+      }
+    }
+    if (pos.y < highestGroundY + 0.05) {
+      pos.y = highestGroundY;
+    }
+  };
+
+  // On spawn, resolve overlaps
+  useEffect(() => {
+    resolvePlayerOverlap(position.current, 0.8, 1.8);
+  }, []);
+
   // Dynamic grounding for transformed prop
   useLayoutEffect(() => {
     if (transformProp && propGroupRef.current && playerGroup.current) {
@@ -234,6 +337,7 @@ export default function Character({ isLocked }) {
             if (prev) {
               scanTimer.current = 0.18; // Force immediate scan
               window.dispatchEvent(new CustomEvent('hud-update', { detail: { visible: false, text: "" } }));
+              resolvePlayerOverlap(position.current, 0.8, 1.8);
               return null;
             }
             return prev;
@@ -273,6 +377,13 @@ export default function Character({ isLocked }) {
       if (playerGroup.current) {
         playerGroup.current.rotation.y = finalRotY;
       }
+
+      // Resolve overlap using target's collision dimensions
+      const [w, h, d] = target.size;
+      const propRadius = Math.max(w, d) / 2;
+      const radius = Math.max(0.35, Math.min(1.0, propRadius));
+      const height = Math.max(0.7, Math.min(2.2, h));
+      resolvePlayerOverlap(position.current, radius, height, target.id);
     };
 
     const handleKeyUp = (e) => {
@@ -308,6 +419,7 @@ export default function Character({ isLocked }) {
               setTransformProp(null);
               scanTimer.current = 0.18;
               window.dispatchEvent(new CustomEvent('hud-update', { detail: { visible: false, text: "" } }));
+              resolvePlayerOverlap(position.current, 0.8, 1.8);
             }
             return;
           }
@@ -358,6 +470,7 @@ export default function Character({ isLocked }) {
                 setTransformProp(null);
                 scanTimer.current = 0.18;
                 window.dispatchEvent(new CustomEvent('hud-update', { detail: { visible: false, text: "" } }));
+                resolvePlayerOverlap(position.current, 0.8, 1.8);
               }
             }
           }
