@@ -186,7 +186,7 @@ export default function Arena() {
 
       {/* --- RENDER FURNITURE --- */}
       <group>
-        {FURNITURE.filter((item) => !item.parentId).map((item) => (
+        {FURNITURE.map((item) => (
           <FurnitureItem
             key={item.id}
             type={item.type}
@@ -194,7 +194,6 @@ export default function Arena() {
             size={item.size}
             color={item.color}
             rotation={item.rotation}
-            childrenProps={FURNITURE.filter((c) => c.parentId === item.id)}
           />
         ))}
       </group>

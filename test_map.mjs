@@ -1,8 +1,21 @@
+
+class Vector3 {
+  constructor(x=0, y=0, z=0) { this.x = x; this.y = y; this.z = z; }
+  set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; }
+  clone() { return new Vector3(this.x, this.y, this.z); }
+  sub(v) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; }
+  add(v) { this.x += v.x; this.y += v.y; this.z += v.z; return this; }
+  applyQuaternion(q) { return this; } 
+}
+class Euler { constructor(x,y,z){} }
+class Quaternion { setFromEuler() { return this; } clone() { return this; } invert() { return this; } }
+const THREE = { Vector3, Euler, Quaternion };
+
 // mapData.js - Defines the walls, furniture, and physical colliders for the level.
-import * as THREE from "three";
+
 
 // 1. WALLS: Structural boundaries of the house (height = 6)
-export const WALLS = [
+const WALLS = [
   // Back Walls (Z = -15)
   { id: "wall_back_kitchen", pos: [-15, 3, -15], size: [20, 6, 1], color: "#7aa495" }, // Sage Green (Kitchen)
   { id: "wall_back_court", pos: [0, 3, -15], size: [10, 6, 1], color: "#5c5753" },   // Exterior Slate (Courtyard)
@@ -459,7 +472,7 @@ const snapPropsToSurfaces = (items) => {
     const minZA = itemA.pos[2] - dA / 2;
     const maxZA = itemA.pos[2] + dA / 2;
 
-    let highestSurfaceY = -0.01; // floor is at y = -0.01 in Arena.jsx
+    let highestSurfaceY = 0; // floor
 
     for (const itemB of items) {
       if (itemA.id === itemB.id) continue;
@@ -614,7 +627,7 @@ const checkPlacementRules = (items) => {
 };
 
 // 3. DECORATIONS: Non-colliding visual elements (rugs, windows, courtyard plants)
-export const DECORATIONS = [
+const DECORATIONS = [
   // Rugs
   { id: "dec_hall_rug", type: "rug", pos: [0, 0.015, 18.0], size: [12, 0.01, 10], color: "#e3d5ca" }, // Large central rug
   { id: "dec_hall_rug_left", type: "rug", pos: [-17, 0.015, 15.0], size: [7, 0.01, 7], color: "#d5bdaf" }, // Left recreation rug
@@ -680,5 +693,11 @@ resolvedFurniture = resolvedFurniture.map(item => {
 validateAndCorrectDecorations(resolvedFurniture);
 checkPlacementRules(resolvedFurniture);
 
-export const FURNITURE = resolvedFurniture;
-export const OBSTACLES = [...WALLS, ...FURNITURE];
+const FURNITURE = resolvedFurniture;
+const OBSTACLES = [...WALLS, ...FURNITURE];
+
+
+console.log("TV Stand:", FURNITURE.find(f => f.id === "hall_tv_stand"));
+console.log("TV Screen:", FURNITURE.find(f => f.id === "hall_tv_screen"));
+console.log("Lamp 1:", FURNITURE.find(f => f.id === "hall_lamp_1"));
+console.log("Lamp ns:", FURNITURE.find(f => f.id === "bedroom_lamp_ns"));

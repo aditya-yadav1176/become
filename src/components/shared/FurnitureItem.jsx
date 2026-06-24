@@ -685,7 +685,7 @@ export function BookStack({ pos, size, color }) {
 
 // Route to correct furniture component
 // Route to correct furniture component
-export function FurnitureItem({ type, pos, size, color, rotation, childrenProps }) {
+export function FurnitureItem({ type, pos, size, color, rotation }) {
   const rotationEuler = rotation ? (Array.isArray(rotation) ? rotation : [0, rotation, 0]) : [0, 0, 0];
 
   const renderItem = () => {
@@ -762,16 +762,6 @@ export function FurnitureItem({ type, pos, size, color, rotation, childrenProps 
   return (
     <group position={pos} rotation={rotationEuler}>
       {renderItem()}
-      {childrenProps && childrenProps.map((child) => (
-        <FurnitureItem
-          key={child.id}
-          type={child.type}
-          pos={child.localPos || [0, 0, 0]}
-          size={child.size}
-          color={child.color}
-          rotation={child.localRot || [0, 0, 0]}
-        />
-      ))}
     </group>
   );
 }
