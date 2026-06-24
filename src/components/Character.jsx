@@ -155,6 +155,11 @@ export default function Character({ isLocked }) {
   // Camera control state
   const mouseRotation = useRef({ x: 0, y: 0.15 }); // yaw, pitch
   const currentLookAt = useRef(new THREE.Vector3(0, 1.6, 15));
+  
+  // Prop Hunt rotation mechanics
+  const propLocked = useRef(false);
+  const lockedPropYaw = useRef(0);
+  const propYawOffset = useRef(0);
 
   const playerRadius = 0.8;
   const playerHeight = 1.8;
@@ -174,7 +179,7 @@ export default function Character({ isLocked }) {
     };
   }, []);
 
-  // Handle mouse movement for camera orbit
+  // Handle mouse movement for camera orbit and prop rotation controls
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (!isLocked) return;
@@ -191,11 +196,36 @@ export default function Character({ isLocked }) {
       );
     };
 
+    const handleMouseDown = (e) => {
+      if (!isLocked || !transformProp) return;
+      
+      if (e.button === 2) { // Right Click (Lock)
+        propLocked.current = true;
+        lockedPropYaw.current = mouseRotation.current.x + propYawOffset.current;
+      } else if (e.button === 0 && !propLocked.current) { // Left Click (Snap to 90 degrees)
+        const currentYaw = mouseRotation.current.x + propYawOffset.current;
+        const snappedYaw = Math.round(currentYaw / (Math.PI / 2)) * (Math.PI / 2);
+        propYawOffset.current = snappedYaw - mouseRotation.current.x;
+      }
+    };
+
+    const handleMouseUp = (e) => {
+      if (!isLocked) return;
+      if (e.button === 2) { // Right Click Release
+        propLocked.current = false;
+        propYawOffset.current = lockedPropYaw.current - mouseRotation.current.x;
+      }
+    };
+
     window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mouseup", handleMouseUp);
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isLocked]);
+  }, [isLocked, transformProp]);
 
   const resolvePlayerOverlap = (pos, radius, height, ignoreId = null) => {
     const maxIterations = 5;
@@ -379,6 +409,10 @@ export default function Character({ isLocked }) {
       if (playerGroup.current) {
         playerGroup.current.rotation.y = finalRotY;
       }
+      
+      // Initialize prop rotation mechanics to match finalRotY
+      propLocked.current = false;
+      propYawOffset.current = finalRotY - mouseRotation.current.x;
 
       // Resolve overlap using target's collision dimensions
       const [w, h, d] = target.size;
@@ -640,11 +674,11 @@ export default function Character({ isLocked }) {
         const hasOtherProps = candidates.length > 1;
         if (hasOtherProps) {
           window.dispatchEvent(new CustomEvent('hud-update', {
-            detail: { visible: true, text: "[E] Next Form  |  Hold [E] Human" }
+            detail: { visible: true, text: "[E] Next Form  |  Hold [E] Human  |  R-Click: Lock  |  L-Click: Snap" }
           }));
         } else {
           window.dispatchEvent(new CustomEvent('hud-update', {
-            detail: { visible: true, text: "Hold [E] Human" }
+            detail: { visible: true, text: "Hold [E] Human  |  R-Click: Lock  |  L-Click: Snap" }
           }));
         }
       }
@@ -667,7 +701,11 @@ export default function Character({ isLocked }) {
     // 2. Set target speed and interpolate current velocity (no movement penalties)
     let speedFactor = 1.0;
     
-    // Lock player WASD movement during Placement Mode
+    // Lock player WASD movement during Prop Lock
+    if (transformProp && propLocked.current) {
+      speedFactor = 0;
+    }
+    
     const targetSpeed = (keyboard.current.shift ? 10 : 4.5) * speedFactor;
     const targetVelX = moveDir.x * targetSpeed;
     const targetVelZ = moveDir.z * targetSpeed;
@@ -721,15 +759,25 @@ export default function Character({ isLocked }) {
         playerGroup.current.rotation.z = 0;
       }
 
-      // Smoothly rotate character toward movement direction
-      if (moveDir.lengthSq() > 0.001) {
-        const targetAngle = Math.atan2(moveDir.x, moveDir.z);
-        let diff = targetAngle - playerGroup.current.rotation.y;
-        
-        // Normalize angle to -PI to PI
-        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-        
-        playerGroup.current.rotation.y += diff * 12 * dt;
+      // Rotate character
+      if (transformProp) {
+        if (propLocked.current) {
+          playerGroup.current.rotation.y = lockedPropYaw.current;
+        } else {
+          // Instantly rotate to face camera + offset
+          playerGroup.current.rotation.y = mouseRotation.current.x + propYawOffset.current;
+        }
+      } else {
+        // Smoothly rotate human toward movement direction
+        if (moveDir.lengthSq() > 0.001) {
+          const targetAngle = Math.atan2(moveDir.x, moveDir.z);
+          let diff = targetAngle - playerGroup.current.rotation.y;
+          
+          // Normalize angle to -PI to PI
+          diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+          
+          playerGroup.current.rotation.y += diff * 12 * dt;
+        }
       }
 
       // 5.1 Calculate velocity-based animation state
