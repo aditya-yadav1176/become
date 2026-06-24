@@ -7,55 +7,57 @@ import { FurnitureItem } from "./shared/FurnitureItem";
 
 const isAllowedProp = (item) => {
   const allowed = [
-    "chair",
-    "plant",
-    "lamp",
-    "cardboard_box",
-    "wooden_crate",
-    "small_table",
-    "stool",
-    "tv_screen"
+    "chair", "plant", "lamp", "cardboard_box", "wooden_crate", "small_table", "stool", "tv_screen",
+    "cushion", "mug", "book_stack", "desk_lamp", "toy", "microwave", "toaster", "blender", 
+    "coffee_maker", "fruit_bowl", "box", "trash_bin", "laundry_basket", "side_table", 
+    "nightstand", "bed_bench", "coffee_table"
   ];
   return allowed.includes(item.type);
 };
 
 const getPriorityWeight = (type) => {
-  if (type === "chair") return 1;
-  if (type === "cardboard_box" || type === "wooden_crate") return 2;
-  if (type === "plant") return 3;
-  if (type === "lamp" || type === "desk_lamp") return 4;
-  if (type === "stool") return 5;
-  if (type === "tv_screen") return 6;
-  return 7; // small_table or others
+  if (type === "cushion" || type === "mug" || type === "toy" || type === "fruit_bowl") return 1;
+  if (type === "chair" || type === "stool") return 2;
+  if (type === "cardboard_box" || type === "wooden_crate" || type === "box" || type === "book_stack") return 3;
+  if (type === "microwave" || type === "toaster" || type === "blender" || type === "coffee_maker") return 4;
+  if (type === "trash_bin" || type === "laundry_basket") return 5;
+  if (type === "plant") return 6;
+  if (type === "lamp" || type === "desk_lamp") return 7;
+  if (type === "tv_screen") return 8;
+  return 9; // tables, benches, etc.
 };
 
 const getPropDisplayName = (type) => {
-  if (type === "chair") return "Chair";
-  if (type === "stool") return "Stool";
-  if (type === "plant") return "Plant";
-  if (type === "lamp") return "Lamp";
-  if (type === "desk_lamp") return "Desk Lamp";
-  if (type === "cardboard_box") return "Box";
-  if (type === "wooden_crate") return "Crate";
-  if (type === "small_table") return "Table";
-  if (type === "tv_screen") return "TV";
-  return type;
+  const names = {
+    chair: "Chair", stool: "Stool", plant: "Plant", lamp: "Lamp", desk_lamp: "Desk Lamp",
+    cardboard_box: "Box", wooden_crate: "Crate", box: "Box", small_table: "Table",
+    tv_screen: "TV", cushion: "Cushion", mug: "Mug", book_stack: "Books", toy: "Toy",
+    microwave: "Microwave", toaster: "Toaster", blender: "Blender", coffee_maker: "Coffee Maker",
+    fruit_bowl: "Fruit Bowl", trash_bin: "Trash Bin", laundry_basket: "Laundry",
+    side_table: "Table", nightstand: "Nightstand", bed_bench: "Bench", coffee_table: "Coffee Table"
+  };
+  return names[type] || type;
 };
 
 const getPropSpeedFactor = (type) => {
-  if (type === "chair" || type === "stool") return 0.9;
-  if (type === "plant") return 0.8;
-  if (type === "cardboard_box" || type === "wooden_crate") return 0.7;
-  if (type === "lamp" || type === "desk_lamp") return 0.6;
-  if (type === "tv_screen") return 0.5;
+  const fast = ["cushion", "mug", "toy", "fruit_bowl"];
+  const mediumFast = ["chair", "stool", "book_stack"];
+  const medium = ["plant", "cardboard_box", "wooden_crate", "box", "trash_bin", "laundry_basket"];
+  const slow = ["lamp", "desk_lamp", "microwave", "toaster", "blender", "coffee_maker", "tv_screen"];
+  
+  if (fast.includes(type)) return 1.0;
+  if (mediumFast.includes(type)) return 0.9;
+  if (medium.includes(type)) return 0.8;
+  if (slow.includes(type)) return 0.6;
   return 0.75; // Fallback
 };
 
 const isJumpAllowed = (type) => {
-  if (type === "chair" || type === "stool") return true;
-  if (type === "cardboard_box" || type === "wooden_crate") return true;
-  if (type === "plant") return true;
-  return false;
+  const allowedJumps = [
+    "chair", "stool", "cardboard_box", "wooden_crate", "plant", "box",
+    "cushion", "mug", "toy", "fruit_bowl", "book_stack", "trash_bin", "laundry_basket"
+  ];
+  return allowedJumps.includes(type);
 };
 
 
