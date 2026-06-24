@@ -199,9 +199,14 @@ export default function Character({ isLocked }) {
     const handleMouseDown = (e) => {
       if (!isLocked || !transformProp) return;
       
-      if (e.button === 2) { // Right Click (Lock)
-        propLocked.current = true;
-        lockedPropYaw.current = mouseRotation.current.x + propYawOffset.current;
+      if (e.button === 2) { // Right Click (Toggle Lock)
+        if (propLocked.current) {
+          propLocked.current = false;
+          propYawOffset.current = lockedPropYaw.current - mouseRotation.current.x;
+        } else {
+          propLocked.current = true;
+          lockedPropYaw.current = mouseRotation.current.x + propYawOffset.current;
+        }
       } else if (e.button === 0 && !propLocked.current) { // Left Click (Snap to 90 degrees)
         const currentYaw = mouseRotation.current.x + propYawOffset.current;
         const snappedYaw = Math.round(currentYaw / (Math.PI / 2)) * (Math.PI / 2);
@@ -209,21 +214,19 @@ export default function Character({ isLocked }) {
       }
     };
 
-    const handleMouseUp = (e) => {
-      if (!isLocked) return;
-      if (e.button === 2) { // Right Click Release
-        propLocked.current = false;
-        propYawOffset.current = lockedPropYaw.current - mouseRotation.current.x;
+    const handleContextMenu = (e) => {
+      if (isLocked) {
+        e.preventDefault();
       }
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mousedown", handleMouseDown);
-    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("contextmenu", handleContextMenu);
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mousedown", handleMouseDown);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("contextmenu", handleContextMenu);
     };
   }, [isLocked, transformProp]);
 
