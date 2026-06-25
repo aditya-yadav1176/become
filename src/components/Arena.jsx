@@ -171,11 +171,7 @@ export default function Arena() {
         <meshStandardMaterial color="#dfc2a5" roughness={0.6} metalness={0.05} />
       </mesh>
 
-      {/* Connecting Room Floor (Warm Oak Wood to replace Courtyard) */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, -5]} receiveShadow>
-        <planeGeometry args={[10, 20]} />
-        <meshStandardMaterial color="#b58a6f" roughness={0.65} metalness={0.05} />
-      </mesh>
+
 
       {/* --- RENDER WALLS --- */}
       <group>

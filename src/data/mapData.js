@@ -5,7 +5,7 @@ import * as THREE from "three";
 export const WALLS = [
   // Back Walls (Z = -15)
   { id: "wall_back_kitchen", pos: [-15, 3, -15], size: [20, 6, 1], color: "#7aa495" }, // Sage Green (Kitchen)
-  { id: "wall_back_center", pos: [0, 3, -15], size: [10, 6, 1], color: "#eee6dd" },   // Cozy Warm White (Connecting wall)
+  { id: "wall_back_court", pos: [0, 3, -15], size: [10, 6, 1], color: "#5c5753" },   // Exterior Slate (Courtyard)
   { id: "wall_back_bedroom", pos: [15, 3, -15], size: [20, 6, 1], color: "#b9c0cd" }, // Soft Periwinkle (Bedroom)
 
   // Front Wall (bottom of Hall)
@@ -18,6 +18,11 @@ export const WALLS = [
   // Right Walls (X = 25)
   { id: "wall_right_bedroom", pos: [25, 3, -5], size: [1, 6, 20], color: "#b9c0cd" }, // Soft Periwinkle (Bedroom)
   { id: "wall_right_hall", pos: [25, 3, 15], size: [1, 6, 20], color: "#eee6dd" },     // Cozy Warm White (Hall)
+
+  // Inner Courtyard Walls
+  { id: "court_left", pos: [-5, 3, -5], size: [1, 6, 20], color: "#7aa495" }, // Kitchen side
+  { id: "court_right", pos: [5, 3, -5], size: [1, 6, 20], color: "#b9c0cd" }, // Bedroom side
+  { id: "court_front", pos: [0, 3, 5], size: [10, 6, 1], color: "#eee6dd" },  // Hall side
 
   // Kitchen - Hall Dividers (Doorway at X = -15, width = 4)
   { id: "kitchen_div_left", pos: [-21, 3, 5], size: [8, 6, 1], color: "#eee6dd" },
@@ -617,10 +622,6 @@ export const DECORATIONS = [
   { id: "dec_bedroom_rug", type: "rug", pos: [13, 0.015, -4.0], size: [10, 0.01, 8], color: "#52796f" }, // Bedroom rug
   { id: "dec_kitchen_rug", type: "rug", pos: [-15, 0.015, 1.5], size: [6, 0.01, 4.0], color: "#d5bdaf" },  // Kitchen table runner
 
-  // Courtyard Grass & Landscaping
-  { id: "dec_court_grass", type: "grass", pos: [0, 0.01, -5], size: [10, 0.01, 20], color: "#3f5e3d" },
-  { id: "dec_court_tree_1", type: "tree", pos: [-2, 2.0, -8], size: [1.2, 4.0, 1.2], color: "#2d4a22" },
-  { id: "dec_court_tree_2", type: "tree", pos: [2, 1.5, -2], size: [1.0, 3.0, 1.0], color: "#365c2b" },
 
   // Window Frames (Placed flat against walls/boundaries)
   { id: "dec_win_kitchen", type: "window_back", pos: [-15, 3.5, -14.4], size: [5.0, 3.0, 0.2] }, // Kitchen back wall
