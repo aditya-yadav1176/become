@@ -985,8 +985,8 @@ export default function Character({ isLocked }) {
       -Math.sin(theta)
     );
 
-    // Pivot is at player head (height = 1.8)
-    const pivotHeight = 1.8;
+    // Pivot is at player head or top of prop
+    const pivotHeight = transformProp ? (currentHeight * 0.8) : 1.8;
     const pivot = new THREE.Vector3(
       position.current.x,
       position.current.y + pivotHeight,
@@ -1009,15 +1009,20 @@ export default function Character({ isLocked }) {
     let minT = 1.0; // range 0 to 1
 
     if (rayLen > 0.001) {
-      // Virtual ceiling and floor bounding boxes
+      // Virtual ceiling and floor bounding boxes + all obstacles (walls & furniture)
       const cameraObstacles = [
-        ...WALLS,
+        ...OBSTACLES,
         { pos: [0, 5.9, 5], size: [60, 0.2, 50] }, // Ceiling
         { pos: [0, 0.1, 5], size: [60, 0.2, 50] }  // Floor
       ];
 
-      for (const wall of cameraObstacles) {
-        const t = checkWallCollision(pivot, rayVec, wall);
+      for (const obs of cameraObstacles) {
+        // Skip checking collision against the morphed prop itself to prevent camera snapping inside player
+        if (transformProp && obs.id === transformProp.id) {
+          continue;
+        }
+        
+        const t = checkWallCollision(pivot, rayVec, obs);
         if (t !== null && t < minT) {
           minT = t;
         }

@@ -5,7 +5,7 @@ import * as THREE from "three";
 export const WALLS = [
   // Back Walls (Z = -15)
   { id: "wall_back_kitchen", pos: [-15, 3, -15], size: [20, 6, 1], color: "#7aa495" }, // Sage Green (Kitchen)
-  { id: "wall_back_court", pos: [0, 3, -15], size: [10, 6, 1], color: "#5c5753" },   // Exterior Slate (Courtyard)
+  { id: "wall_back_center", pos: [0, 3, -15], size: [10, 6, 1], color: "#eee6dd" },   // Cozy Warm White (Connecting wall)
   { id: "wall_back_bedroom", pos: [15, 3, -15], size: [20, 6, 1], color: "#b9c0cd" }, // Soft Periwinkle (Bedroom)
 
   // Front Wall (bottom of Hall)
@@ -18,11 +18,6 @@ export const WALLS = [
   // Right Walls (X = 25)
   { id: "wall_right_bedroom", pos: [25, 3, -5], size: [1, 6, 20], color: "#b9c0cd" }, // Soft Periwinkle (Bedroom)
   { id: "wall_right_hall", pos: [25, 3, 15], size: [1, 6, 20], color: "#eee6dd" },     // Cozy Warm White (Hall)
-
-  // Inner Courtyard Walls
-  { id: "court_left", pos: [-5, 3, -5], size: [1, 6, 20], color: "#7aa495" }, // Kitchen side
-  { id: "court_right", pos: [5, 3, -5], size: [1, 6, 20], color: "#b9c0cd" }, // Bedroom side
-  { id: "court_front", pos: [0, 3, 5], size: [10, 6, 1], color: "#eee6dd" },  // Hall side
 
   // Kitchen - Hall Dividers (Doorway at X = -15, width = 4)
   { id: "kitchen_div_left", pos: [-21, 3, 5], size: [8, 6, 1], color: "#eee6dd" },
