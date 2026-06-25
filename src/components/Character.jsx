@@ -420,8 +420,8 @@ export default function Character({ isLocked }) {
       // Resolve overlap using target's collision dimensions
       const [w, h, d] = target.size;
       const propRadius = Math.max(w, d) / 2;
-      const radius = Math.max(0.35, Math.min(1.0, propRadius));
-      const height = Math.max(0.7, Math.min(2.2, h));
+      const radius = Math.max(0.35, propRadius);
+      const height = Math.max(0.7, h);
       resolvePlayerOverlap(position.current, radius, height, target.id);
     };
 
@@ -536,55 +536,63 @@ export default function Character({ isLocked }) {
     if (pos.z < -limit) { pos.z = -limit; vel.z = 0; }
     if (pos.z > limit) { pos.z = limit; vel.z = 0; }
 
-    for (const obs of OBSTACLES) {
-      // Skip checking collision against the morphed prop itself to prevent getting stuck
-      if (transformProp && obs.id === transformProp.id) {
-        continue;
-      }
+    const maxIterations = 3;
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let overlapCount = 0;
+      
+      for (const obs of OBSTACLES) {
+        // Skip checking collision against the morphed prop itself to prevent getting stuck
+        if (transformProp && obs.id === transformProp.id) {
+          continue;
+        }
 
-      // Player AABB
-      const pMinX = pos.x - radius;
-      const pMaxX = pos.x + radius;
-      const pMinZ = pos.z - radius;
-      const pMaxZ = pos.z + radius;
-      const pMinY = pos.y;
-      const pMaxY = pos.y + height;
+        // Player AABB
+        const pMinX = pos.x - radius;
+        const pMaxX = pos.x + radius;
+        const pMinZ = pos.z - radius;
+        const pMaxZ = pos.z + radius;
+        const pMinY = pos.y;
+        const pMaxY = pos.y + height;
 
-      // Obstacle AABB
-      const oMinX = obs.pos[0] - obs.size[0] / 2;
-      const oMaxX = obs.pos[0] + obs.size[0] / 2;
-      const oMinZ = obs.pos[2] - obs.size[2] / 2;
-      const oMaxZ = obs.pos[2] + obs.size[2] / 2;
-      const oMinY = obs.pos[1] - obs.size[1] / 2;
-      const oMaxY = obs.pos[1] + obs.size[1] / 2;
+        // Obstacle AABB
+        const oMinX = obs.pos[0] - obs.size[0] / 2;
+        const oMaxX = obs.pos[0] + obs.size[0] / 2;
+        const oMinZ = obs.pos[2] - obs.size[2] / 2;
+        const oMaxZ = obs.pos[2] + obs.size[2] / 2;
+        const oMinY = obs.pos[1] - obs.size[1] / 2;
+        const oMaxY = obs.pos[1] + obs.size[1] / 2;
 
-      // Check for overlap on all 3 axes
-      const overlapX = Math.min(pMaxX, oMaxX) - Math.max(pMinX, oMinX);
-      const overlapZ = Math.min(pMaxZ, oMaxZ) - Math.max(pMinZ, oMinZ);
-      const overlapY = Math.min(pMaxY, oMaxY) - Math.max(pMinY, oMinY);
+        // Check for overlap on all 3 axes
+        const overlapX = Math.min(pMaxX, oMaxX) - Math.max(pMinX, oMinX);
+        const overlapZ = Math.min(pMaxZ, oMaxZ) - Math.max(pMinZ, oMinZ);
+        const overlapY = Math.min(pMaxY, oMaxY) - Math.max(pMinY, oMinY);
 
-      if (overlapX > 0 && overlapZ > 0 && overlapY > 0) {
-        // Resolve along the axis of shallowest penetration
-        if (overlapX < overlapZ && overlapX < overlapY) {
-          const pushX = pos.x > obs.pos[0] ? overlapX : -overlapX;
-          pos.x += pushX;
-          vel.x = 0;
-        } else if (overlapZ < overlapX && overlapZ < overlapY) {
-          const pushZ = pos.z > obs.pos[2] ? overlapZ : -overlapZ;
-          pos.z += pushZ;
-          vel.z = 0;
-        } else {
-          // Resolve on Y axis
-          if (pos.y > obs.pos[1]) {
-            pos.y += overlapY;
-            vel.y = 0;
-            grounded = true; // We are standing on top of this block
+        if (overlapX > 0 && overlapZ > 0 && overlapY > 0) {
+          overlapCount++;
+          // Resolve along the axis of shallowest penetration
+          if (overlapX < overlapZ && overlapX < overlapY) {
+            const pushX = pos.x > obs.pos[0] ? overlapX : -overlapX;
+            pos.x += pushX;
+            vel.x = 0;
+          } else if (overlapZ < overlapX && overlapZ < overlapY) {
+            const pushZ = pos.z > obs.pos[2] ? overlapZ : -overlapZ;
+            pos.z += pushZ;
+            vel.z = 0;
           } else {
-            pos.y -= overlapY;
-            vel.y = 0;
+            // Resolve on Y axis
+            if (pos.y > obs.pos[1]) {
+              pos.y += overlapY;
+              vel.y = 0;
+              grounded = true; // We are standing on top of this block
+            } else {
+              pos.y -= overlapY;
+              vel.y = 0;
+            }
           }
         }
       }
+      
+      if (overlapCount === 0) break;
     }
 
     // Floor collision (y = 0 is ground)
@@ -740,8 +748,8 @@ export default function Character({ isLocked }) {
     if (transformProp) {
       const [w, h, d] = transformProp.size;
       const propRadius = Math.max(w, d) / 2;
-      currentRadius = Math.max(0.35, Math.min(1.0, propRadius));
-      currentHeight = Math.max(0.7, Math.min(2.2, h));
+      currentRadius = Math.max(0.35, propRadius);
+      currentHeight = Math.max(0.7, h);
     }
 
     // 3. Collision Resolution
