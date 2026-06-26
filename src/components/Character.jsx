@@ -111,7 +111,7 @@ const checkWallCollision = (p, d, wall) => {
   return Math.max(0, tMin);
 };
 
-export default function Character({ isLocked, playerPosRef, resetTriggerRef }) {
+export default function Character({ isLocked, playerPosRef, resetTriggerRef, playerMovedTimeRef }) {
   const { camera } = useThree();
   const keyboard = useKeyboard();
 
@@ -723,6 +723,9 @@ export default function Character({ isLocked, playerPosRef, resetTriggerRef }) {
     if (moveDir.lengthSq() > 0) {
       moveDir.normalize();
       moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), camAngle);
+      if (playerMovedTimeRef) {
+        playerMovedTimeRef.current = performance.now();
+      }
     }
 
     // 2. Set target speed and interpolate current velocity (no movement penalties)

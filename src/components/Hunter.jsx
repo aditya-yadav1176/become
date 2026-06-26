@@ -67,7 +67,7 @@ const checkWallCollision = (p, d, wall) => {
   return Math.max(0, tMin);
 };
 
-export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTriggerRef }) {
+export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTriggerRef, playerMovedTimeRef }) {
   const hunterGroup = useRef();
   const bodyMesh = useRef();
   const torsoGroup = useRef();
@@ -119,14 +119,19 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
     let playerVisible = false;
     const distToPlayer = pos.distanceTo(playerPosRef.current);
     
+    // Immediate Catch condition (ignore vision)
+    if (distToPlayer <= 1.5) {
+      window.dispatchEvent(new CustomEvent('hunter-catch'));
+    }
+
     // Check range
-    if (distToPlayer < 8.0) {
+    if (distToPlayer <= 8.0) {
       const dirToPlayer = playerPosRef.current.clone().sub(pos).normalize();
       const hunterForward = new THREE.Vector3(Math.sin(rotationY.current), 0, Math.cos(rotationY.current));
       
       // Check FOV (70 degrees = 35 degrees each side)
       const angle = hunterForward.angleTo(dirToPlayer);
-      if (angle < (35 * Math.PI / 180)) {
+      if (angle <= (35 * Math.PI / 180)) {
         // Raycast Line of Sight
         const rayVec = playerPosRef.current.clone().sub(pos);
         // Elevate ray slightly so it doesn't hit floor
@@ -150,8 +155,14 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
 
     // Accumulate detection
     if (playerVisible) {
-      detectionTimer.current += dt;
-      if (detectionTimer.current > 1.0) {
+      let timeSinceMoved = 999;
+      if (playerMovedTimeRef) {
+        timeSinceMoved = (performance.now() - playerMovedTimeRef.current) / 1000;
+      }
+      const detectionMultiplier = timeSinceMoved <= 2.0 ? 2.0 : 1.0;
+      
+      detectionTimer.current += dt * detectionMultiplier;
+      if (detectionTimer.current >= 0.6) {
         isChasing.current = true;
       }
     } else {
@@ -166,11 +177,6 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
       targetPos = playerPosRef.current.clone();
       targetSpeed = 6;
       isMoving = true;
-      
-      // Check Catch condition
-      if (distToPlayer < 1.2) {
-        window.dispatchEvent(new CustomEvent('hunter-catch'));
-      }
     } else {
       // Patrol Logic
       if (pauseTimer.current > 0) {
