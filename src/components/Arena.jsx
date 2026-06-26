@@ -1,14 +1,23 @@
 import React from "react";
 import * as THREE from "three";
+import { ContactShadows, SoftShadows, Sky } from "@react-three/drei";
 import { WALLS, FURNITURE, DECORATIONS } from "../data/mapData";
 
 // --- WALL COMPONENT ---
 function Wall({ pos, size, color }) {
+  const [w, h, d] = size;
   return (
-    <mesh position={pos} castShadow receiveShadow>
-      <boxGeometry args={size} />
-      <meshStandardMaterial color={color} roughness={0.9} metalness={0.05} />
-    </mesh>
+    <group position={pos}>
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={size} />
+        <meshStandardMaterial color={color} roughness={0.9} metalness={0.05} />
+      </mesh>
+      {/* Baseboard (Skirting Board) - Adds architectural realism */}
+      <mesh position={[0, -h/2 + 0.2, 0]} castShadow receiveShadow>
+        <boxGeometry args={w > d ? [w + 0.02, 0.4, d + 0.1] : [w + 0.1, 0.4, d + 0.02]} />
+        <meshStandardMaterial color="#f8fafc" roughness={0.4} metalness={0.1} />
+      </mesh>
+    </group>
   );
 }
 
@@ -63,13 +72,15 @@ function WindowFrame({ pos, size }) {
       <mesh>
         <boxGeometry args={isXAligned ? [w - 0.2, h - 0.2, 0.05] : [0.05, h - 0.2, d - 0.2]} />
         <meshPhysicalMaterial
-          color="#bae6fd"
+          color="#e0f2fe"
           transparent
-          opacity={0.3}
-          roughness={0.1}
-          metalness={0.9}
-          transmission={0.6}
-          thickness={0.1}
+          opacity={1}
+          roughness={0.05}
+          metalness={0.1}
+          transmission={0.95}
+          ior={1.5}
+          thickness={0.2}
+          clearcoat={1}
         />
       </mesh>
       {/* Window Cross Grid */}
@@ -131,6 +142,10 @@ function Poster({ pos, size, color }) {
 export default function Arena() {
   return (
     <>
+      <Sky sunPosition={[25, 45, -20]} inclination={0.2} azimuth={0.25} rayleigh={1.5} turbidity={0.8} />
+      <SoftShadows size={20} samples={16} focus={0.5} />
+      <ContactShadows position={[0, -0.005, 0]} opacity={0.6} scale={100} blur={2.5} far={4} resolution={1024} color="#1a202c" />
+      
       {/* Soft warm global ambient light - cozy and bright */}
       <ambientLight intensity={0.65} color="#fffbeb" />
 
@@ -156,19 +171,19 @@ export default function Arena() {
       {/* Hallway / Living Room Floor (Warm Oak Wood) */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 15]} receiveShadow>
         <planeGeometry args={[50, 20]} />
-        <meshStandardMaterial color="#b58a6f" roughness={0.65} metalness={0.05} />
+        <meshStandardMaterial color="#b58a6f" roughness={0.4} metalness={0.15} />
       </mesh>
 
       {/* Kitchen Floor (Warm Terracotta Tiles) */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-15, -0.01, -5]} receiveShadow>
         <planeGeometry args={[20, 20]} />
-        <meshStandardMaterial color="#ca8a04" roughness={0.75} metalness={0.05} />
+        <meshStandardMaterial color="#ca8a04" roughness={0.45} metalness={0.1} />
       </mesh>
 
       {/* Bedroom Floor (Light Birch Wood) */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[15, -0.01, -5]} receiveShadow>
         <planeGeometry args={[20, 20]} />
-        <meshStandardMaterial color="#dfc2a5" roughness={0.6} metalness={0.05} />
+        <meshStandardMaterial color="#dfc2a5" roughness={0.35} metalness={0.2} />
       </mesh>
 
 
