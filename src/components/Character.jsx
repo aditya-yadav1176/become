@@ -111,7 +111,7 @@ const checkWallCollision = (p, d, wall) => {
   return Math.max(0, tMin);
 };
 
-export default function Character({ isLocked, playerPosRef, resetTriggerRef, playerMovedTimeRef }) {
+export default function Character({ isLocked, playerPosRef, resetTriggerRef, playerMovedTimeRef, playerFormChangedTimeRef }) {
   const { camera } = useThree();
   const keyboard = useKeyboard();
 
@@ -119,10 +119,13 @@ export default function Character({ isLocked, playerPosRef, resetTriggerRef, pla
   const [transformProp, setTransformProp] = useState(null);
   const [yOffset, setYOffset] = useState(0);
 
-  // Form name updates for UI
+  // Form name updates for UI and suspicion
   useEffect(() => {
     const formName = transformProp ? transformProp.type.replace(/_/g, ' ') : "Human";
     window.dispatchEvent(new CustomEvent('player-form', { detail: { name: formName } }));
+    if (playerFormChangedTimeRef) {
+      playerFormChangedTimeRef.current = performance.now();
+    }
   }, [transformProp]);
 
   const transformScale = transformProp ? (transformProp.scale || [1, 1, 1]) : [1, 1, 1];

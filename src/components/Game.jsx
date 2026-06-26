@@ -20,6 +20,7 @@ export default function Game() {
   const hunterPosRef = useRef(new THREE.Vector3(0, 0, 15));
   const resetTriggerRef = useRef(0);
   const playerMovedTimeRef = useRef(0);
+  const playerFormChangedTimeRef = useRef(0);
 
   // Main Timer Loop
   useEffect(() => {
@@ -212,8 +213,8 @@ export default function Game() {
 
         {/* Game Elements */}
         <Arena />
-        <Character isLocked={isLocked} playerPosRef={playerPosRef} resetTriggerRef={resetTriggerRef} playerMovedTimeRef={playerMovedTimeRef} />
-        <Hunter gameState={gameState} playerPosRef={playerPosRef} hunterPosRef={hunterPosRef} resetTriggerRef={resetTriggerRef} playerMovedTimeRef={playerMovedTimeRef} />
+        <Character isLocked={isLocked} playerPosRef={playerPosRef} resetTriggerRef={resetTriggerRef} playerMovedTimeRef={playerMovedTimeRef} playerFormChangedTimeRef={playerFormChangedTimeRef} />
+        <Hunter gameState={gameState} playerPosRef={playerPosRef} hunterPosRef={hunterPosRef} resetTriggerRef={resetTriggerRef} playerMovedTimeRef={playerMovedTimeRef} playerFormChangedTimeRef={playerFormChangedTimeRef} playerFormName={playerFormName} />
       </Canvas>
     </div>
   );
