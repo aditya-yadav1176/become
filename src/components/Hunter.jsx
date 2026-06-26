@@ -1,10 +1,9 @@
 import React, { useRef, useState, useEffect } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { OBSTACLES, FURNITURE } from "../data/mapData";
+import { OBSTACLES, FURNITURE, WALLS } from "../data/mapData";
 import { Html } from "@react-three/drei";
 
-// Rooms and Waypoints
 const ROOMS = {
   Hall: { min: { x: -23, z: 6 }, max: { x: 23, z: 23 } },
   Kitchen: { min: { x: -23, z: -13 }, max: { x: -7, z: 4 } },
@@ -23,40 +22,20 @@ const checkWallCollision = (p, d, wall) => {
   const minZ = wall.pos[2] - wall.size[2] / 2;
   const maxZ = wall.pos[2] + wall.size[2] / 2;
 
-  let tMin = -Infinity;
-  let tMax = Infinity;
-
-  if (Math.abs(d.x) < 1e-8) {
-    if (p.x < minX || p.x > maxX) return null;
-  } else {
-    const t1 = (minX - p.x) / d.x;
-    const t2 = (maxX - p.x) / d.x;
-    tMin = Math.max(tMin, Math.min(t1, t2));
-    tMax = Math.min(tMax, Math.max(t1, t2));
+  let tMin = -Infinity, tMax = Infinity;
+  if (Math.abs(d.x) < 1e-8) { if (p.x < minX || p.x > maxX) return null; } else {
+    const t1 = (minX - p.x) / d.x; const t2 = (maxX - p.x) / d.x;
+    tMin = Math.max(tMin, Math.min(t1, t2)); tMax = Math.min(tMax, Math.max(t1, t2));
   }
-
-  if (Math.abs(d.y) < 1e-8) {
-    if (p.y < minY || p.y > maxY) return null;
-  } else {
-    const t1 = (minY - p.y) / d.y;
-    const t2 = (maxY - p.y) / d.y;
-    tMin = Math.max(tMin, Math.min(t1, t2));
-    tMax = Math.min(tMax, Math.max(t1, t2));
+  if (Math.abs(d.y) < 1e-8) { if (p.y < minY || p.y > maxY) return null; } else {
+    const t1 = (minY - p.y) / d.y; const t2 = (maxY - p.y) / d.y;
+    tMin = Math.max(tMin, Math.min(t1, t2)); tMax = Math.min(tMax, Math.max(t1, t2));
   }
-
-  if (Math.abs(d.z) < 1e-8) {
-    if (p.z < minZ || p.z > maxZ) return null;
-  } else {
-    const t1 = (minZ - p.z) / d.z;
-    const t2 = (maxZ - p.z) / d.z;
-    tMin = Math.max(tMin, Math.min(t1, t2));
-    tMax = Math.min(tMax, Math.max(t1, t2));
+  if (Math.abs(d.z) < 1e-8) { if (p.z < minZ || p.z > maxZ) return null; } else {
+    const t1 = (minZ - p.z) / d.z; const t2 = (maxZ - p.z) / d.z;
+    tMin = Math.max(tMin, Math.min(t1, t2)); tMax = Math.min(tMax, Math.max(t1, t2));
   }
-
-  if (tMin > tMax) return null;
-  if (tMax < 0) return null;
-  if (tMin > 1) return null;
-
+  if (tMin > tMax || tMax < 0 || tMin > 1) return null;
   return Math.max(0, tMin);
 };
 
@@ -66,21 +45,10 @@ function getRoomForPos(pos) {
   return "Bedroom";
 }
 
-function getRandomPointInRoom(roomName) {
-  const r = ROOMS[roomName];
-  const x = Math.random() * (r.max.x - r.min.x) + r.min.x;
-  const z = Math.random() * (r.max.z - r.min.z) + r.min.z;
-  return new THREE.Vector3(x, 0.5, z);
-}
-
 function checkObstacleOverlap(pos, radius = 1.0) {
   for (const obs of OBSTACLES) {
-    const hw = obs.size[0] / 2 + radius;
-    const hh = obs.size[1] / 2;
-    const hd = obs.size[2] / 2 + radius;
-    if (Math.abs(pos.x - obs.pos[0]) < hw && 
-        pos.y > obs.pos[1] - hh && pos.y < obs.pos[1] + hh && 
-        Math.abs(pos.z - obs.pos[2]) < hd) {
+    const hw = obs.size[0] / 2 + radius, hh = obs.size[1] / 2, hd = obs.size[2] / 2 + radius;
+    if (Math.abs(pos.x - obs.pos[0]) < hw && pos.y > obs.pos[1] - hh && pos.y < obs.pos[1] + hh && Math.abs(pos.z - obs.pos[2]) < hd) {
       return true;
     }
   }
@@ -88,301 +56,325 @@ function checkObstacleOverlap(pos, radius = 1.0) {
 }
 
 export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTriggerRef, playerMovedTimeRef, playerFormChangedTimeRef, playerFormName }) {
-  const hunterGroup = useRef();
-  const bodyMesh = useRef();
-  const torsoGroup = useRef();
-  const leftLeg = useRef();
-  const rightLeg = useRef();
-  const leftArm = useRef();
-  const rightArm = useRef();
+  const hunterGroup = useRef(); const bodyMesh = useRef(); const torsoGroup = useRef();
+  const leftLeg = useRef(); const rightLeg = useRef(); const leftArm = useRef(); const rightArm = useRef();
   const headMesh = useRef();
 
   const position = useRef(new THREE.Vector3(0, 0.5, 15));
   const rotationY = useRef(Math.PI);
-  
-  // AI States
-  const [aiState, setAiState] = useState("PATROL");
-  const aiStateRef = useRef("PATROL");
-  const [currentRoom, setCurrentRoom] = useState("Hall");
-  const [targetPosUI, setTargetPosUI] = useState(new THREE.Vector3());
-  const [suspicionScoreUI, setSuspicionScoreUI] = useState(0);
-  const [isVisibleUI, setIsVisibleUI] = useState(false);
-  const [lastInspectedUI, setLastInspectedUI] = useState("None");
-
-  const navigationQueue = useRef([]);
-  const targetPos = useRef(new THREE.Vector3(0, 0.5, 15));
-  const pauseTimer = useRef(0);
-  const suspicionScore = useRef(0);
-  const inspectTimer = useRef(0);
-  const searchTimer = useRef(0);
-  const lastKnownPlayerPos = useRef(new THREE.Vector3());
-  
-  const evalTimer = useRef(0);
-  const animTime = useRef(0);
-  
-  // Head look animation for INSPECT
   const lookYaw = useRef(0);
   const lookPitch = useRef(0);
+  const animTime = useRef(0);
 
-  // Helper to change state securely
+  const aiStateRef = useRef("DECIDE_NEXT");
+  const [aiStateUI, setAiStateUI] = useState("DECIDE_NEXT");
+  const [visibleCountUI, setVisibleCountUI] = useState(0);
+  const [suspicionScoreUI, setSuspicionScoreUI] = useState(0);
+
+  const navigationQueue = useRef([]);
+  const targetPos = useRef(null);
+  const lastKnownPlayerPos = useRef(new THREE.Vector3());
+  const inspectionTarget = useRef(null);
+  const suspicionScore = useRef(0);
+  const inspectedLocations = useRef([]);
+
+  const phaseTimer = useRef(0);
+  const scanTimer = useRef(0);
+  const phaseStep = useRef(0);
+
   const changeState = (newState) => {
     aiStateRef.current = newState;
-    setAiState(newState);
+    setAiStateUI(newState);
+    phaseTimer.current = 0;
+    phaseStep.current = 0;
   };
 
   useEffect(() => {
     if (resetTriggerRef && resetTriggerRef.current > 0) {
       position.current.set(0, 0.5, 15);
       rotationY.current = Math.PI;
-      changeState("PATROL");
+      changeState("DECIDE_NEXT");
       navigationQueue.current = [];
-      targetPos.current = new THREE.Vector3(0, 0.5, 15);
-      pauseTimer.current = 0;
+      targetPos.current = null;
       suspicionScore.current = 0;
-      inspectTimer.current = 0;
-      searchTimer.current = 0;
-      lookYaw.current = 0;
-      lookPitch.current = 0;
+      lookYaw.current = 0; lookPitch.current = 0;
+      inspectedLocations.current = [];
     }
   }, [resetTriggerRef?.current]);
 
-  const generatePatrolTarget = () => {
+  const generateAntiRailTarget = () => {
     const curRoom = getRoomForPos(position.current);
-    const rand = Math.random();
-    let nextRoom = "Hall";
-    if (rand > 0.35 && rand <= 0.70) nextRoom = "Kitchen";
-    else if (rand > 0.70) nextRoom = "Bedroom";
-    
-    // Fallback if same room
-    if (nextRoom === curRoom && Math.random() > 0.5) {
-      nextRoom = (curRoom === "Hall") ? "Kitchen" : "Hall"; 
+    const r = Math.random();
+    let tgtRoom = curRoom;
+    let finalPt = null;
+
+    if (r < 0.3) {
+      // Corner
+      const bounds = ROOMS[curRoom];
+      const cx = Math.random() > 0.5 ? bounds.min.x + 2 : bounds.max.x - 2;
+      const cz = Math.random() > 0.5 ? bounds.min.z + 2 : bounds.max.z - 2;
+      finalPt = new THREE.Vector3(cx, 0.5, cz);
+    } else if (r < 0.5) {
+      // Cluster (near furniture)
+      const roomFurn = FURNITURE.filter(f => getRoomForPos(new THREE.Vector3(...f.pos)) === curRoom);
+      if (roomFurn.length > 0) {
+        const f = roomFurn[Math.floor(Math.random() * roomFurn.length)];
+        finalPt = new THREE.Vector3(f.pos[0] + (Math.random()*4-2), 0.5, f.pos[2] + (Math.random()*4-2));
+      }
+    } else if (r < 0.7) {
+      // Revisit
+      tgtRoom = (curRoom === "Hall") ? (Math.random()>0.5?"Kitchen":"Bedroom") : "Hall";
+      finalPt = new THREE.Vector3(ROOMS[tgtRoom].min.x + 4, 0.5, ROOMS[tgtRoom].min.z + 4);
+    } else if (r < 0.9) {
+      // Scan Doorway
+      finalPt = (curRoom === "Kitchen") ? DOORS.Kitchen.clone() : (curRoom === "Bedroom" ? DOORS.Bedroom.clone() : DOORS.Kitchen.clone());
+    } else {
+      // Random
+      const rx = ROOMS[curRoom];
+      finalPt = new THREE.Vector3(rx.min.x + Math.random()*(rx.max.x-rx.min.x), 0.5, rx.min.z + Math.random()*(rx.max.z-rx.min.z));
     }
 
-    let finalPt = null;
-    for (let i = 0; i < 15; i++) {
-      let pt = getRandomPointInRoom(nextRoom);
-      if (!checkObstacleOverlap(pt, 1.2)) {
-        finalPt = pt;
+    if (!finalPt) finalPt = position.current.clone();
+
+    // Check Memory
+    for (const mem of inspectedLocations.current) {
+      if (finalPt.distanceTo(mem) < 2.0) {
+        // Fallback random
+        finalPt = position.current.clone();
         break;
       }
     }
-    if (!finalPt) finalPt = getRandomPointInRoom(nextRoom); // fallback
-    
+
     navigationQueue.current = [];
-    
-    if (curRoom !== nextRoom) {
-      if (curRoom === "Kitchen" || curRoom === "Bedroom") {
-        navigationQueue.current.push(DOORS[curRoom].clone());
-      }
-      if (nextRoom === "Kitchen" || nextRoom === "Bedroom") {
-        navigationQueue.current.push(DOORS[nextRoom].clone());
-      }
+    tgtRoom = getRoomForPos(finalPt);
+    if (curRoom !== tgtRoom) {
+      if (curRoom === "Kitchen" || curRoom === "Bedroom") navigationQueue.current.push(DOORS[curRoom].clone());
+      if (tgtRoom === "Kitchen" || tgtRoom === "Bedroom") navigationQueue.current.push(DOORS[tgtRoom].clone());
     }
     navigationQueue.current.push(finalPt);
-    
     targetPos.current = navigationQueue.current.shift();
-    setCurrentRoom(curRoom);
-    setTargetPosUI(targetPos.current);
   };
 
-  useFrame((state, dt) => {
-    if (gameState === "HIDE" || gameState === "WIN" || gameState === "LOSE") {
-      animTime.current = 0;
-      return;
-    }
+  const executeVisualScan = () => {
+    // 1. Gather all candidates (FURNITURE + Player)
+    const candidates = FURNITURE.map(f => ({ isPlayer: false, pos: new THREE.Vector3(f.pos[0], 0.5, f.pos[2]), type: f.type, id: f.id }));
+    candidates.push({ isPlayer: true, pos: playerPosRef.current.clone(), type: playerFormName, id: "player" });
 
+    // 2. Filter by FOV and Range
     const pos = position.current;
-    let targetSpeed = 4;
-    let isMoving = false;
-    let playerVisible = false;
-
-    // --- 1. VISION & SUSPICION (Every 250ms) ---
-    evalTimer.current += dt;
-    if (evalTimer.current >= 0.25) {
-      evalTimer.current = 0;
-      const distToPlayer = pos.distanceTo(playerPosRef.current);
-      
-      if (distToPlayer <= 8.0) {
-        const dirToPlayer = playerPosRef.current.clone().sub(pos).normalize();
-        const hunterForward = new THREE.Vector3(Math.sin(rotationY.current), 0, Math.cos(rotationY.current));
-        const angle = hunterForward.angleTo(dirToPlayer);
-        
-        if (angle <= (35 * Math.PI / 180)) {
-          const rayVec = playerPosRef.current.clone().sub(pos);
-          rayVec.y += 0.5;
-          const pivot = pos.clone();
-          pivot.y += 0.5;
-
-          let hitWall = false;
-          for (const obs of OBSTACLES) {
-            if (checkWallCollision(pivot, rayVec, obs) !== null) {
-              hitWall = true; break;
-            }
+    const forward = new THREE.Vector3(Math.sin(rotationY.current + lookYaw.current), 0, Math.cos(rotationY.current + lookYaw.current));
+    
+    let visible = [];
+    for (const c of candidates) {
+      const dist = pos.distanceTo(c.pos);
+      if (dist < 9.0) {
+        const dir = c.pos.clone().sub(pos).normalize();
+        if (forward.angleTo(dir) <= (40 * Math.PI / 180)) {
+          // Raycast Walls only
+          const rayVec = c.pos.clone().sub(pos); rayVec.y += 0.5;
+          const pivot = pos.clone(); pivot.y += 0.5;
+          let hit = false;
+          for (const wall of WALLS) {
+            if (checkWallCollision(pivot, rayVec, wall) !== null) { hit = true; break; }
           }
-          if (!hitWall) playerVisible = true;
+          if (!hit) {
+            visible.push({ ...c, dist });
+          }
         }
       }
+    }
 
-      setIsVisibleUI(playerVisible);
+    setVisibleCountUI(visible.length);
 
-      if (playerVisible && aiStateRef.current !== "CHASE") {
-        let score = 0;
+    // 3. Optimize: Sort by distance to center of vision, pick top 3
+    visible.sort((a, b) => {
+      const dirA = a.pos.clone().sub(pos).normalize();
+      const dirB = b.pos.clone().sub(pos).normalize();
+      return forward.angleTo(dirA) - forward.angleTo(dirB);
+    });
+    visible = visible.slice(0, 3);
+
+    // 4. Suspicion Math
+    let maxSus = 0;
+    let mostSusObj = null;
+
+    for (const c of visible) {
+      let curSus = 0;
+      
+      // Floating check (simplified y check)
+      if (c.pos.y > 1.5) curSus += 40;
+      
+      // Environment Checks
+      let nearTable = false, nearWall = false;
+      let clusterMatch = false;
+      for (const f of FURNITURE) {
+        if (f.id === c.id) continue;
+        const d = c.pos.distanceTo(new THREE.Vector3(f.pos[0], 0.5, f.pos[2]));
+        if (d < 2.5 && (f.type.includes("table") || f.type.includes("desk"))) nearTable = true;
+        if (d < 1.5 && (f.type === c.type)) clusterMatch = true;
+      }
+      if (Math.abs(c.pos.x) > 23 || Math.abs(c.pos.x) < 2 || Math.abs(c.pos.z) > 23 || Math.abs(c.pos.z) < 2) nearWall = true;
+
+      const type = c.type.toLowerCase();
+      if (type.includes("chair") && !nearTable) curSus += 25;
+      if (type.includes("plant") && !nearWall) curSus += 25;
+      if (type.includes("box") && !nearWall) curSus += 25;
+      if (clusterMatch) curSus -= 20;
+
+      // Player specific checks (No cheating, we only know if we literally saw it move)
+      if (c.isPlayer) {
         const pMovedTime = playerMovedTimeRef ? playerMovedTimeRef.current : 0;
         const pFormTime = playerFormChangedTimeRef ? playerFormChangedTimeRef.current : 0;
         const now = performance.now();
         
-        // Human? Instant catch/chase
-        if (playerFormName === "Human") {
-          score = 100;
-        } else {
-          // Object Suspicion rules
-          if ((now - pMovedTime) < 2000) score += 40;
-          if ((now - pFormTime) < 2000) score += 30;
-          
-          let closestDist = Infinity;
-          let closestType = "";
-          for (const f of FURNITURE) {
-            const d = playerPosRef.current.distanceTo(new THREE.Vector3(f.pos[0], 0, f.pos[2]));
-            if (d < closestDist) {
-              closestDist = d;
-              closestType = f.type;
-            }
-          }
-          
-          if (closestDist > 3.0) score += 15;
-          if (Math.abs(playerPosRef.current.z - 5) < 2.0 && Math.abs(playerPosRef.current.x) > 5) score += 10;
-          if (playerFormName.toLowerCase() === closestType.replace(/_/g, ' ')) score -= 20;
-          if ((now - pMovedTime) > 15000) score -= 15;
-        }
+        if ((now - pMovedTime) < 2000) curSus += 60;
+        if ((now - pFormTime) < 2000) curSus += 50;
+        if ((now - pMovedTime) > 20000) curSus -= 20;
         
-        // Decay score if perfectly still and matching naturally, but never below 0
-        suspicionScore.current = Math.max(0, suspicionScore.current + score);
-        setSuspicionScoreUI(suspicionScore.current);
-        
-        if (suspicionScore.current > 70) {
-          changeState("CHASE");
-        } else if (suspicionScore.current > 50 && aiStateRef.current === "PATROL") {
-          changeState("INVESTIGATE");
-        }
-      } else if (!playerVisible) {
-        // Slowly lose suspicion if out of sight
-        suspicionScore.current = Math.max(0, suspicionScore.current - 10);
-        setSuspicionScoreUI(suspicionScore.current);
+        if (type === "human") curSus += 100; // Human form immediately obvious
       }
-      
-      if (playerVisible) {
-        lastKnownPlayerPos.current.copy(playerPosRef.current);
+
+      if (curSus > maxSus) {
+        maxSus = curSus;
+        mostSusObj = c;
       }
     }
 
-    // --- 2. IMMEDIATE CATCH ---
-    if (pos.distanceTo(playerPosRef.current) <= 1.5 && (suspicionScore.current > 70 || aiStateRef.current === "CHASE")) {
+    if (maxSus > 0) {
+      suspicionScore.current = Math.min(100, suspicionScore.current + maxSus);
+      setSuspicionScoreUI(suspicionScore.current);
+      
+      if (mostSusObj && mostSusObj.isPlayer) {
+        lastKnownPlayerPos.current.copy(playerPosRef.current);
+      }
+      
+      if (suspicionScore.current > 85) {
+        changeState("CHASE");
+      } else if (suspicionScore.current > 50 && aiStateRef.current !== "INSPECT_SCAN" && aiStateRef.current !== "INVESTIGATING") {
+        inspectionTarget.current = mostSusObj.pos.clone();
+        changeState("INVESTIGATING");
+      }
+    } else {
+      suspicionScore.current = Math.max(0, suspicionScore.current - 10);
+      setSuspicionScoreUI(suspicionScore.current);
+    }
+  };
+
+  useFrame((state, dt) => {
+    if (gameState === "HIDE" || gameState === "WIN" || gameState === "LOSE") { animTime.current = 0; return; }
+
+    const pos = position.current;
+    let targetSpeed = 5;
+    let isMoving = false;
+    const st = aiStateRef.current;
+
+    // Fast Immediate Catch
+    if (pos.distanceTo(playerPosRef.current) <= 1.5 && (suspicionScore.current > 60 || st === "CHASE")) {
       window.dispatchEvent(new CustomEvent('hunter-catch'));
     }
 
-    // --- 3. STATE MACHINE LOGIC ---
-    const st = aiStateRef.current;
-    
-    if (st === "PATROL") {
-      if (pauseTimer.current > 0) {
-        pauseTimer.current -= dt;
-      } else {
-        if (!targetPos.current) generatePatrolTarget();
-        
-        const dist = pos.distanceTo(targetPos.current);
-        if (dist < 0.5) {
-          if (navigationQueue.current.length > 0) {
-            targetPos.current = navigationQueue.current.shift();
-            setTargetPosUI(targetPos.current);
-          } else {
-            pauseTimer.current = 1.0 + Math.random() * 2.0; // Pause 1-3 sec
-            targetPos.current = null;
-          }
-        } else {
-          isMoving = true;
-          // Simple obstacle avoidance raycast (left/right steer)
-          // For V1, just strictly move. 
-        }
-      }
-      lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0, 5 * dt);
-      lookPitch.current = THREE.MathUtils.lerp(lookPitch.current, 0, 5 * dt);
-    } 
-    else if (st === "INVESTIGATE") {
-      targetPos.current = lastKnownPlayerPos.current.clone();
+    scanTimer.current -= dt;
+    if (scanTimer.current <= 0 && st !== "CHASE") {
+      executeVisualScan();
+      scanTimer.current = 0.5; 
+    }
+
+    if (st === "DECIDE_NEXT") {
+      generateAntiRailTarget();
+      changeState("WALKING");
+    }
+    else if (st === "WALKING") {
       const dist = pos.distanceTo(targetPos.current);
-      if (dist < 2.5) {
-        changeState("INSPECT");
-        inspectTimer.current = 2.0; // Inspect for 2 seconds
-        setLastInspectedUI(playerFormName);
+      if (dist < 0.5) {
+        if (navigationQueue.current.length > 0) {
+          targetPos.current = navigationQueue.current.shift();
+        } else {
+          changeState("ENTRY_SCAN");
+        }
       } else {
         isMoving = true;
       }
       lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0, 5 * dt);
-      lookPitch.current = THREE.MathUtils.lerp(lookPitch.current, 0, 5 * dt);
     }
-    else if (st === "INSPECT") {
-      inspectTimer.current -= dt;
-      // Procedural head looking
-      const t = 2.0 - inspectTimer.current;
-      if (t < 0.5) lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0.5, 5*dt); // look right
-      else if (t < 1.0) lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, -0.5, 5*dt); // look left
-      else {
-        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0, 5*dt);
-        lookPitch.current = THREE.MathUtils.lerp(lookPitch.current, 0.3, 5*dt); // look down
+    else if (st === "ENTRY_SCAN") {
+      phaseTimer.current += dt;
+      if (phaseStep.current === 0) {
+        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0.78, 5*dt); // left
+        if (phaseTimer.current > 0.6) { phaseStep.current = 1; phaseTimer.current = 0; executeVisualScan(); }
+      } else if (phaseStep.current === 1) {
+        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0, 5*dt); // center
+        if (phaseTimer.current > 0.6) { phaseStep.current = 2; phaseTimer.current = 0; executeVisualScan(); }
+      } else if (phaseStep.current === 2) {
+        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, -0.78, 5*dt); // right
+        if (phaseTimer.current > 0.6) { phaseStep.current = 3; phaseTimer.current = 0; executeVisualScan(); }
+      } else {
+        changeState("DECIDE_NEXT");
       }
-      
-      if (inspectTimer.current <= 0) {
-        if (suspicionScore.current > 50) {
+    }
+    else if (st === "INVESTIGATING") {
+      const dist = pos.distanceTo(inspectionTarget.current);
+      targetPos.current = inspectionTarget.current;
+      if (dist < 2.5) {
+        changeState("INSPECT_SCAN");
+      } else {
+        isMoving = true;
+      }
+      lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0, 5 * dt);
+    }
+    else if (st === "INSPECT_SCAN") {
+      phaseTimer.current += dt;
+      if (phaseStep.current === 0) {
+        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0.78, 5*dt); 
+        if (phaseTimer.current > 1.2) { phaseStep.current = 1; phaseTimer.current = 0; executeVisualScan(); }
+      } else if (phaseStep.current === 1) {
+        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0, 5*dt); 
+        if (phaseTimer.current > 1.2) { phaseStep.current = 2; phaseTimer.current = 0; executeVisualScan(); }
+      } else if (phaseStep.current === 2) {
+        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, -0.78, 5*dt); 
+        if (phaseTimer.current > 1.2) { phaseStep.current = 3; phaseTimer.current = 0; executeVisualScan(); }
+      } else {
+        // Evaluate Error Chance
+        if (suspicionScore.current > 50 && Math.random() > 0.20) {
           changeState("CHASE");
         } else {
-          changeState("PATROL");
-          suspicionScore.current = 0;
-          generatePatrolTarget();
+          suspicionScore.current = 0; // Made a mistake or gave up
+          setSuspicionScoreUI(0);
+          inspectedLocations.current.push(inspectionTarget.current.clone());
+          if (inspectedLocations.current.length > 8) inspectedLocations.current.shift();
+          changeState("DECIDE_NEXT");
         }
       }
     }
     else if (st === "CHASE") {
-      targetSpeed = 6;
-      if (playerVisible) {
-        targetPos.current = playerPosRef.current.clone();
-        isMoving = true;
-        searchTimer.current = 5.0;
-      } else {
-        // Run to last known, then search
-        if (pos.distanceTo(lastKnownPlayerPos.current) > 1.0) {
-          targetPos.current = lastKnownPlayerPos.current.clone();
-          isMoving = true;
-        } else {
-          changeState("RETURN");
-        }
+      targetSpeed = 6.5;
+      targetPos.current = playerPosRef.current.clone();
+      isMoving = true;
+      
+      phaseTimer.current += dt;
+      if (phaseTimer.current > 5.0 && pos.distanceTo(playerPosRef.current) > 10.0) {
+        // Lost them
+        suspicionScore.current = 0;
+        changeState("LOST");
       }
       lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0, 5 * dt);
-      lookPitch.current = THREE.MathUtils.lerp(lookPitch.current, 0, 5 * dt);
     }
-    else if (st === "RETURN") {
-      searchTimer.current -= dt;
-      // Look around frantically
-      lookYaw.current = Math.sin(searchTimer.current * 10) * 0.8;
-      
-      if (searchTimer.current <= 0) {
-        changeState("PATROL");
-        suspicionScore.current = 0;
-        generatePatrolTarget();
+    else if (st === "LOST") {
+      phaseTimer.current += dt;
+      lookYaw.current = Math.sin(phaseTimer.current * 10) * 0.8;
+      if (phaseTimer.current > 4.0) {
+        changeState("DECIDE_NEXT");
       }
     }
 
-    // --- 4. APPLY MOVEMENT ---
     if (isMoving && targetPos.current) {
-      const moveDir = targetPos.current.clone().sub(pos);
-      moveDir.y = 0; 
-      
+      const moveDir = targetPos.current.clone().sub(pos); moveDir.y = 0; 
       if (moveDir.lengthSq() > 0.001) {
         moveDir.normalize();
         const targetYaw = Math.atan2(moveDir.x, moveDir.z);
         let diff = targetYaw - rotationY.current;
         while (diff < -Math.PI) diff += Math.PI * 2;
         while (diff > Math.PI) diff -= Math.PI * 2;
-        rotationY.current += diff * (st === "CHASE" ? 15 : 6) * dt;
+        rotationY.current += diff * (st === "CHASE" ? 15 : 8) * dt;
 
         pos.addScaledVector(moveDir, targetSpeed * dt);
         animTime.current += dt * (targetSpeed / 4);
@@ -397,11 +389,10 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
       hunterGroup.current.rotation.y = rotationY.current;
     }
 
-    // --- 5. ANIMATION & IK ---
+    // --- ANIMATION ---
     const time = animTime.current;
     if (bodyMesh.current) {
-      let bobOffset = 0;
-      let targetTorsoX = 0, targetTorsoY = 0, targetHeadX = 0, targetHeadY = 0;
+      let bobOffset = 0, targetTorsoX = 0, targetTorsoY = 0, targetHeadX = 0, targetHeadY = 0;
       let targetLeftLegX = 0, targetRightLegX = 0, targetLeftArmX = 0, targetRightArmX = 0;
 
       if (!isMoving) {
@@ -412,27 +403,26 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
         targetRightArmX = -Math.sin(time * 2.5) * 0.03;
       } else {
         const isC = (st === "CHASE");
-        const freq = isC ? 11.0 : 7.0;
-        const legAmp = isC ? 0.60 : 0.35;
-        const armAmp = isC ? 0.55 : 0.30;
+        const freq = isC ? 12.0 : 8.0;
+        const legAmp = isC ? 0.65 : 0.40;
+        const armAmp = isC ? 0.60 : 0.35;
         
         targetLeftLegX = Math.sin(time * freq) * legAmp;
         targetRightLegX = -Math.sin(time * freq) * legAmp;
         targetLeftArmX = -Math.sin(time * freq) * armAmp;
         targetRightArmX = Math.sin(time * freq) * armAmp;
 
-        bobOffset = Math.abs(Math.sin(time * freq)) * (isC ? 0.09 : 0.05) - (isC ? 0.045 : 0.025);
-        targetTorsoX = (isC ? 0.12 : 0.04) + Math.sin(time * freq) * (isC ? 0.02 : 0.01);
+        bobOffset = Math.abs(Math.sin(time * freq)) * (isC ? 0.1 : 0.05) - (isC ? 0.05 : 0.025);
+        targetTorsoX = (isC ? 0.15 : 0.05) + Math.sin(time * freq) * 0.02;
         targetTorsoY = Math.sin(time * freq) * (isC ? 0.12 : 0.05);
-        targetHeadX = isC ? -0.04 : 0;
-        targetHeadY = -Math.sin(time * freq) * (isC ? 0.03 : 0.02);
+        targetHeadX = isC ? -0.05 : 0;
+        targetHeadY = -Math.sin(time * freq) * 0.03;
       }
 
-      // Add additive head look
       targetHeadX += lookPitch.current;
       targetHeadY += lookYaw.current;
 
-      const lerpSpeed = 10;
+      const lerpSpeed = 12;
       bodyMesh.current.position.y = THREE.MathUtils.lerp(bodyMesh.current.position.y, bobOffset, lerpSpeed * dt);
       
       if (torsoGroup.current) {
@@ -443,141 +433,49 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
         headMesh.current.rotation.x = THREE.MathUtils.lerp(headMesh.current.rotation.x, targetHeadX, lerpSpeed * dt);
         headMesh.current.rotation.y = THREE.MathUtils.lerp(headMesh.current.rotation.y, targetHeadY, lerpSpeed * dt);
       }
-      if (leftLeg.current) {
-        leftLeg.current.rotation.x = THREE.MathUtils.lerp(leftLeg.current.rotation.x, targetLeftLegX, lerpSpeed * dt);
-      }
-      if (rightLeg.current) {
-        rightLeg.current.rotation.x = THREE.MathUtils.lerp(rightLeg.current.rotation.x, targetRightLegX, lerpSpeed * dt);
-      }
-      if (leftArm.current) {
-        leftArm.current.rotation.x = THREE.MathUtils.lerp(leftArm.current.rotation.x, targetLeftArmX, lerpSpeed * dt);
-      }
-      if (rightArm.current) {
-        rightArm.current.rotation.x = THREE.MathUtils.lerp(rightArm.current.rotation.x, targetRightArmX, lerpSpeed * dt);
-      }
+      if (leftLeg.current) { leftLeg.current.rotation.x = THREE.MathUtils.lerp(leftLeg.current.rotation.x, targetLeftLegX, lerpSpeed * dt); }
+      if (rightLeg.current) { rightLeg.current.rotation.x = THREE.MathUtils.lerp(rightLeg.current.rotation.x, targetRightLegX, lerpSpeed * dt); }
+      if (leftArm.current) { leftArm.current.rotation.x = THREE.MathUtils.lerp(leftArm.current.rotation.x, targetLeftArmX, lerpSpeed * dt); }
+      if (rightArm.current) { rightArm.current.rotation.x = THREE.MathUtils.lerp(rightArm.current.rotation.x, targetRightArmX, lerpSpeed * dt); }
     }
   });
 
   return (
     <group ref={hunterGroup}>
-      {/* HTML DEBUG HUD FOR HUNTER */}
-      <Html position={[0, 2.2, 0]} center>
+      <Html position={[0, 2.3, 0]} center zIndexRange={[100, 0]}>
         <div style={{
-          background: 'rgba(0,0,0,0.8)',
-          color: '#34d399',
-          padding: '8px 12px',
-          borderRadius: '8px',
-          fontFamily: 'monospace',
-          fontSize: '12px',
-          whiteSpace: 'nowrap',
-          border: '1px solid #34d399',
-          pointerEvents: 'none'
+          background: 'rgba(0,0,0,0.85)', color: '#3b82f6', padding: '6px 10px',
+          borderRadius: '4px', fontFamily: 'monospace', fontSize: '11px',
+          whiteSpace: 'nowrap', border: '1px solid #3b82f6', pointerEvents: 'none'
         }}>
-          <div>STATE: {aiState}</div>
-          <div>ROOM: {currentRoom}</div>
-          <div>TARGET: {targetPosUI ? `${targetPosUI.x.toFixed(1)}, ${targetPosUI.z.toFixed(1)}` : 'None'}</div>
+          <div>[V3 AI]</div>
+          <div>STATE: {aiStateUI}</div>
           <div>SUSPICION: {suspicionScoreUI.toFixed(0)}</div>
-          <div>VISIBLE: {isVisibleUI ? 'YES' : 'NO'}</div>
-          <div>INSPECTED: {lastInspectedUI}</div>
+          <div>VISIBLE OBJS: {visibleCountUI}</div>
         </div>
       </Html>
-
-      {/* HUNTER MESH */}
       <group ref={bodyMesh}>
         <group ref={torsoGroup} position={[0, 0.7, 0]}>
-          <mesh position={[0, 0.35, 0]} castShadow receiveShadow>
-            <boxGeometry args={[0.6, 0.68, 0.36]} />
-            <meshStandardMaterial color="#722F37" roughness={0.85} /> 
-          </mesh>
-          <mesh position={[0, 0.03, 0]} castShadow>
-            <boxGeometry args={[0.61, 0.06, 0.37]} />
-            <meshStandardMaterial color="#722F37" roughness={0.85} />
-          </mesh>
-          <mesh position={[0, -0.02, 0]} castShadow>
-            <boxGeometry args={[0.57, 0.04, 0.34]} />
-            <meshStandardMaterial color="#2d2a29" roughness={0.9} /> 
-          </mesh>
-          <mesh position={[0, 0.69, 0]} castShadow>
-            <boxGeometry args={[0.2, 0.03, 0.2]} />
-            <meshStandardMaterial color="#2d2a29" roughness={0.9} />
-          </mesh>
-          <mesh position={[0, 0.52, -0.15]} castShadow>
-            <boxGeometry args={[0.42, 0.42, 0.16]} />
-            <meshStandardMaterial color="#722F37" roughness={0.85} />
-          </mesh>
+          <mesh position={[0, 0.35, 0]} castShadow receiveShadow><boxGeometry args={[0.6, 0.68, 0.36]} /><meshStandardMaterial color="#722F37" roughness={0.85} /></mesh>
+          <mesh position={[0, 0.03, 0]} castShadow><boxGeometry args={[0.61, 0.06, 0.37]} /><meshStandardMaterial color="#722F37" roughness={0.85} /></mesh>
+          <mesh position={[0, -0.02, 0]} castShadow><boxGeometry args={[0.57, 0.04, 0.34]} /><meshStandardMaterial color="#2d2a29" roughness={0.9} /></mesh>
+          <mesh position={[0, 0.69, 0]} castShadow><boxGeometry args={[0.2, 0.03, 0.2]} /><meshStandardMaterial color="#2d2a29" roughness={0.9} /></mesh>
+          <mesh position={[0, 0.52, -0.15]} castShadow><boxGeometry args={[0.42, 0.42, 0.16]} /><meshStandardMaterial color="#722F37" roughness={0.85} /></mesh>
 
           <group ref={headMesh} position={[0, 0.7, 0]}>
-            <mesh position={[0, 0.05, 0]} castShadow>
-              <boxGeometry args={[0.12, 0.1, 0.12]} />
-              <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
-            </mesh>
-            <mesh position={[0, 0.2, 0]} castShadow>
-              <boxGeometry args={[0.32, 0.32, 0.32]} />
-              <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
-            </mesh>
-            {/* Red Eyes */}
-            <mesh position={[-0.07, 0.18, 0.161]} castShadow>
-              <boxGeometry args={[0.06, 0.05, 0.01]} />
-              <meshStandardMaterial color="#ff2222" emissive="#ff0000" emissiveIntensity={2.0} roughness={0.1} />
-            </mesh>
-            <mesh position={[0.07, 0.18, 0.161]} castShadow>
-              <boxGeometry args={[0.06, 0.05, 0.01]} />
-              <meshStandardMaterial color="#ff2222" emissive="#ff0000" emissiveIntensity={2.0} roughness={0.1} />
-            </mesh>
-            <mesh position={[0, 0.32, 0.01]} castShadow>
-              <boxGeometry args={[0.34, 0.12, 0.34]} />
-              <meshStandardMaterial color="#111111" roughness={0.9} />
-            </mesh>
-            <mesh position={[0, 0.22, -0.15]} castShadow>
-              <boxGeometry args={[0.34, 0.18, 0.05]} />
-              <meshStandardMaterial color="#111111" roughness={0.9} />
-            </mesh>
+            <mesh position={[0, 0.05, 0]} castShadow><boxGeometry args={[0.12, 0.1, 0.12]} /><meshStandardMaterial color="#f5ebe0" roughness={0.7} /></mesh>
+            <mesh position={[0, 0.2, 0]} castShadow><boxGeometry args={[0.32, 0.32, 0.32]} /><meshStandardMaterial color="#f5ebe0" roughness={0.7} /></mesh>
+            <mesh position={[-0.07, 0.18, 0.161]} castShadow><boxGeometry args={[0.06, 0.05, 0.01]} /><meshStandardMaterial color="#ff2222" emissive="#ff0000" emissiveIntensity={2.0} roughness={0.1} /></mesh>
+            <mesh position={[0.07, 0.18, 0.161]} castShadow><boxGeometry args={[0.06, 0.05, 0.01]} /><meshStandardMaterial color="#ff2222" emissive="#ff0000" emissiveIntensity={2.0} roughness={0.1} /></mesh>
+            <mesh position={[0, 0.32, 0.01]} castShadow><boxGeometry args={[0.34, 0.12, 0.34]} /><meshStandardMaterial color="#111111" roughness={0.9} /></mesh>
+            <mesh position={[0, 0.22, -0.15]} castShadow><boxGeometry args={[0.34, 0.18, 0.05]} /><meshStandardMaterial color="#111111" roughness={0.9} /></mesh>
           </group>
-
-          <group ref={leftArm} position={[-0.38, 0.65, 0]}>
-            <mesh position={[0, -0.225, 0]} castShadow>
-              <boxGeometry args={[0.18, 0.45, 0.18]} />
-              <meshStandardMaterial color="#722F37" roughness={0.85} />
-            </mesh>
-            <mesh position={[0, -0.5, 0]} castShadow>
-              <boxGeometry args={[0.14, 0.12, 0.14]} />
-              <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
-            </mesh>
-          </group>
-
-          <group ref={rightArm} position={[0.38, 0.65, 0]}>
-            <mesh position={[0, -0.225, 0]} castShadow>
-              <boxGeometry args={[0.18, 0.45, 0.18]} />
-              <meshStandardMaterial color="#722F37" roughness={0.85} />
-            </mesh>
-            <mesh position={[0, -0.5, 0]} castShadow>
-              <boxGeometry args={[0.14, 0.12, 0.14]} />
-              <meshStandardMaterial color="#f5ebe0" roughness={0.7} />
-            </mesh>
-          </group>
+          <group ref={leftArm} position={[-0.38, 0.65, 0]}><mesh position={[0, -0.225, 0]} castShadow><boxGeometry args={[0.18, 0.45, 0.18]} /><meshStandardMaterial color="#722F37" roughness={0.85} /></mesh><mesh position={[0, -0.5, 0]} castShadow><boxGeometry args={[0.14, 0.12, 0.14]} /><meshStandardMaterial color="#f5ebe0" roughness={0.7} /></mesh></group>
+          <group ref={rightArm} position={[0.38, 0.65, 0]}><mesh position={[0, -0.225, 0]} castShadow><boxGeometry args={[0.18, 0.45, 0.18]} /><meshStandardMaterial color="#722F37" roughness={0.85} /></mesh><mesh position={[0, -0.5, 0]} castShadow><boxGeometry args={[0.14, 0.12, 0.14]} /><meshStandardMaterial color="#f5ebe0" roughness={0.7} /></mesh></group>
         </group>
-
         <group position={[0, 0.7, 0]}>
-          <group ref={leftLeg} position={[-0.15, 0, 0]}>
-            <mesh position={[0, -0.3, 0]} castShadow>
-              <boxGeometry args={[0.24, 0.6, 0.24]} />
-              <meshStandardMaterial color="#2d2a29" roughness={0.95} />
-            </mesh>
-            <mesh position={[0, -0.65, 0.04]} castShadow>
-              <boxGeometry args={[0.22, 0.1, 0.32]} />
-              <meshStandardMaterial color="#111111" roughness={0.5} />
-            </mesh>
-          </group>
-          <group ref={rightLeg} position={[0.15, 0, 0]}>
-            <mesh position={[0, -0.3, 0]} castShadow>
-              <boxGeometry args={[0.24, 0.6, 0.24]} />
-              <meshStandardMaterial color="#2d2a29" roughness={0.95} />
-            </mesh>
-            <mesh position={[0, -0.65, 0.04]} castShadow>
-              <boxGeometry args={[0.22, 0.1, 0.32]} />
-              <meshStandardMaterial color="#111111" roughness={0.5} />
-            </mesh>
-          </group>
+          <group ref={leftLeg} position={[-0.15, 0, 0]}><mesh position={[0, -0.3, 0]} castShadow><boxGeometry args={[0.24, 0.6, 0.24]} /><meshStandardMaterial color="#2d2a29" roughness={0.95} /></mesh><mesh position={[0, -0.65, 0.04]} castShadow><boxGeometry args={[0.22, 0.1, 0.32]} /><meshStandardMaterial color="#111111" roughness={0.5} /></mesh></group>
+          <group ref={rightLeg} position={[0.15, 0, 0]}><mesh position={[0, -0.3, 0]} castShadow><boxGeometry args={[0.24, 0.6, 0.24]} /><meshStandardMaterial color="#2d2a29" roughness={0.95} /></mesh><mesh position={[0, -0.65, 0.04]} castShadow><boxGeometry args={[0.22, 0.1, 0.32]} /><meshStandardMaterial color="#111111" roughness={0.5} /></mesh></group>
         </group>
       </group>
     </group>
