@@ -72,6 +72,8 @@ export default function Game() {
       window.removeEventListener("player-form", handleFormUpdate);
     };
   }, [gameState]);
+
+  useEffect(() => {
     const handleLockChange = () => {
       setIsLocked(document.pointerLockElement === document.body);
     };
