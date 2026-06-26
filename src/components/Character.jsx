@@ -111,13 +111,19 @@ const checkWallCollision = (p, d, wall) => {
   return Math.max(0, tMin);
 };
 
-export default function Character({ isLocked }) {
+export default function Character({ isLocked, playerPosRef, resetTriggerRef }) {
   const { camera } = useThree();
   const keyboard = useKeyboard();
 
   // Transformation states and refs
   const [transformProp, setTransformProp] = useState(null);
   const [yOffset, setYOffset] = useState(0);
+
+  // Form name updates for UI
+  useEffect(() => {
+    const formName = transformProp ? transformProp.type.replace(/_/g, ' ') : "Human";
+    window.dispatchEvent(new CustomEvent('player-form', { detail: { name: formName } }));
+  }, [transformProp]);
 
   const transformScale = transformProp ? (transformProp.scale || [1, 1, 1]) : [1, 1, 1];
 
@@ -138,6 +144,16 @@ export default function Character({ isLocked }) {
   // References for player state
   const position = useRef(new THREE.Vector3(0, 0.5, 15));
   const velocity = useRef(new THREE.Vector3(0, 0, 0));
+
+  // Handle Round Reset
+  useEffect(() => {
+    if (resetTriggerRef && resetTriggerRef.current > 0) {
+      setTransformProp(null);
+      position.current.set(0, 0.5, 15);
+      velocity.current.set(0, 0, 0);
+      mouseRotation.current = { x: 0, y: 0.15 };
+    }
+  }, [resetTriggerRef?.current]);
   const wasGrounded = useRef(true);
   const landCrouchTime = useRef(0);
   const takeoffCrouchTime = useRef(0);
@@ -754,6 +770,10 @@ export default function Character({ isLocked }) {
 
     // 3. Collision Resolution
     const isGrounded = checkCollisions(position.current, velocity.current, currentRadius, currentHeight);
+
+    if (playerPosRef) {
+      playerPosRef.current.copy(position.current);
+    }
 
     // 4. Handle Jump (object jump = human jump)
     if (isGrounded && jump) {
