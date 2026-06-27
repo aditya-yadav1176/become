@@ -55,6 +55,43 @@ function checkObstacleOverlap(pos, radius = 1.0) {
   return false;
 }
 
+const resolveCollisions = (pos, radius = 0.4) => {
+  const limit = 24.5;
+  if (pos.x < -limit) pos.x = -limit;
+  if (pos.x > limit) pos.x = limit;
+  if (pos.z < -limit) pos.z = -limit;
+  if (pos.z > limit) pos.z = limit;
+
+  for (let iter = 0; iter < 3; iter++) {
+    let overlapCount = 0;
+    for (const obs of OBSTACLES) {
+      const pMinX = pos.x - radius; const pMaxX = pos.x + radius;
+      const pMinZ = pos.z - radius; const pMaxZ = pos.z + radius;
+      const pMinY = pos.y; const pMaxY = pos.y + 1.8;
+
+      const oMinX = obs.pos[0] - obs.size[0] / 2; const oMaxX = obs.pos[0] + obs.size[0] / 2;
+      const oMinZ = obs.pos[2] - obs.size[2] / 2; const oMaxZ = obs.pos[2] + obs.size[2] / 2;
+      const oMinY = obs.pos[1] - obs.size[1] / 2; const oMaxY = obs.pos[1] + obs.size[1] / 2;
+
+      const overlapX = Math.min(pMaxX, oMaxX) - Math.max(pMinX, oMinX);
+      const overlapZ = Math.min(pMaxZ, oMaxZ) - Math.max(pMinZ, oMinZ);
+      const overlapY = Math.min(pMaxY, oMaxY) - Math.max(pMinY, oMinY);
+
+      if (overlapX > 0 && overlapZ > 0 && overlapY > 0) {
+        overlapCount++;
+        if (overlapX < overlapZ && overlapX < overlapY) {
+          pos.x += pos.x > obs.pos[0] ? overlapX : -overlapX;
+        } else if (overlapZ < overlapX && overlapZ < overlapY) {
+          pos.z += pos.z > obs.pos[2] ? overlapZ : -overlapZ;
+        } else {
+          pos.y += pos.y > obs.pos[1] ? overlapY : -overlapY;
+        }
+      }
+    }
+    if (overlapCount === 0) break;
+  }
+};
+
 export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTriggerRef, playerMovedTimeRef, playerFormChangedTimeRef, playerFormName }) {
   const hunterGroup = useRef(); const bodyMesh = useRef(); const torsoGroup = useRef();
   const leftLeg = useRef(); const rightLeg = useRef(); const leftArm = useRef(); const rightArm = useRef();
@@ -377,6 +414,7 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
         rotationY.current += diff * (st === "CHASE" ? 15 : 8) * dt;
 
         pos.addScaledVector(moveDir, targetSpeed * dt);
+        resolveCollisions(pos, 0.4);
         animTime.current += dt * (targetSpeed / 4);
       }
     } else {

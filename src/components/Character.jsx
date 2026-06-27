@@ -560,10 +560,6 @@ export default function Character({ isLocked, playerPosRef, resetTriggerRef, pla
       let overlapCount = 0;
       
       for (const obs of OBSTACLES) {
-        // Skip checking collision against the morphed prop itself to prevent getting stuck
-        if (transformProp && obs.id === transformProp.id) {
-          continue;
-        }
 
         // Player AABB
         const pMinX = pos.x - radius;
