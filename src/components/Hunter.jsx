@@ -102,6 +102,7 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
   const lookYaw = useRef(0);
   const lookPitch = useRef(0);
   const animTime = useRef(0);
+  const currentVelocity = useRef(new THREE.Vector3(0, 0, 0));
 
   const aiStateRef = useRef("DECIDE_NEXT");
   const [aiStateUI, setAiStateUI] = useState("DECIDE_NEXT");
@@ -145,39 +146,46 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
     let tgtRoom = curRoom;
     let finalPt = null;
 
-    if (r < 0.3) {
-      // Corner
-      const bounds = ROOMS[curRoom];
-      const cx = Math.random() > 0.5 ? bounds.min.x + 2 : bounds.max.x - 2;
-      const cz = Math.random() > 0.5 ? bounds.min.z + 2 : bounds.max.z - 2;
-      finalPt = new THREE.Vector3(cx, 0.5, cz);
-    } else if (r < 0.5) {
-      // Cluster (near furniture)
-      const roomFurn = FURNITURE.filter(f => getRoomForPos(new THREE.Vector3(...f.pos)) === curRoom);
-      if (roomFurn.length > 0) {
-        const f = roomFurn[Math.floor(Math.random() * roomFurn.length)];
-        finalPt = new THREE.Vector3(f.pos[0] + (Math.random()*4-2), 0.5, f.pos[2] + (Math.random()*4-2));
+    if (r < 0.4) {
+      // 40% PATROL (Random room, random point)
+      const rooms = ["Hall", "Kitchen", "Bedroom"];
+      tgtRoom = rooms[Math.floor(Math.random() * rooms.length)];
+      const rx = ROOMS[tgtRoom];
+      finalPt = new THREE.Vector3(rx.min.x + Math.random()*(rx.max.x-rx.min.x), 0.5, rx.min.z + Math.random()*(rx.max.z-rx.min.z));
+    } else if (r < 0.6) {
+      // 20% SCAN (Doorway)
+      finalPt = (curRoom === "Kitchen") ? DOORS.Kitchen.clone() : (curRoom === "Bedroom" ? DOORS.Bedroom.clone() : DOORS.Kitchen.clone());
+    } else if (r < 0.8) {
+      // 20% INSPECT (Corner or Cluster)
+      if (Math.random() > 0.5) {
+        const bounds = ROOMS[curRoom];
+        const cx = Math.random() > 0.5 ? bounds.min.x + 2 : bounds.max.x - 2;
+        const cz = Math.random() > 0.5 ? bounds.min.z + 2 : bounds.max.z - 2;
+        finalPt = new THREE.Vector3(cx, 0.5, cz);
+      } else {
+        const roomFurn = FURNITURE.filter(f => getRoomForPos(new THREE.Vector3(...f.pos)) === curRoom);
+        if (roomFurn.length > 0) {
+          const f = roomFurn[Math.floor(Math.random() * roomFurn.length)];
+          finalPt = new THREE.Vector3(f.pos[0] + (Math.random()*4-2), 0.5, f.pos[2] + (Math.random()*4-2));
+        }
       }
-    } else if (r < 0.7) {
-      // Revisit
+    } else if (r < 0.9) {
+      // 10% REVISIT
       tgtRoom = (curRoom === "Hall") ? (Math.random()>0.5?"Kitchen":"Bedroom") : "Hall";
       finalPt = new THREE.Vector3(ROOMS[tgtRoom].min.x + 4, 0.5, ROOMS[tgtRoom].min.z + 4);
-    } else if (r < 0.9) {
-      // Scan Doorway
-      finalPt = (curRoom === "Kitchen") ? DOORS.Kitchen.clone() : (curRoom === "Bedroom" ? DOORS.Bedroom.clone() : DOORS.Kitchen.clone());
     } else {
-      // Random
-      const rx = ROOMS[curRoom];
-      finalPt = new THREE.Vector3(rx.min.x + Math.random()*(rx.max.x-rx.min.x), 0.5, rx.min.z + Math.random()*(rx.max.z-rx.min.z));
+      // 10% WANDER (Small radius near current)
+      finalPt = new THREE.Vector3(position.current.x + (Math.random()*6-3), 0.5, position.current.z + (Math.random()*6-3));
     }
 
     if (!finalPt) finalPt = position.current.clone();
 
-    // Check Memory
+    // Check Memory (store 5 targets, 3 unit radius)
     for (const mem of inspectedLocations.current) {
-      if (finalPt.distanceTo(mem) < 2.0) {
-        // Fallback random
-        finalPt = position.current.clone();
+      if (finalPt.distanceTo(mem) < 3.0) {
+        // Fallback random in same room to avoid stuck states
+        const rx = ROOMS[curRoom];
+        finalPt = new THREE.Vector3(rx.min.x + Math.random()*(rx.max.x-rx.min.x), 0.5, rx.min.z + Math.random()*(rx.max.z-rx.min.z));
         break;
       }
     }
@@ -268,7 +276,7 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
         if ((now - pFormTime) < 2000) curSus += 50;
         if ((now - pMovedTime) > 20000) curSus -= 20;
         
-        if (type === "human") curSus += 100; // Human form immediately obvious
+        if (type === "human") curSus += 45; // Takes ~2-3 scans (0.5-0.75s) to trigger chase, no instant detection
       }
 
       if (curSus > maxSus) {
@@ -337,13 +345,10 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
       phaseTimer.current += dt;
       if (phaseStep.current === 0) {
         lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0.78, 5*dt); // left
-        if (phaseTimer.current > 0.6) { phaseStep.current = 1; phaseTimer.current = 0; executeVisualScan(); }
+        if (phaseTimer.current > 0.8) { phaseStep.current = 1; phaseTimer.current = 0; executeVisualScan(); }
       } else if (phaseStep.current === 1) {
-        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0, 5*dt); // center
-        if (phaseTimer.current > 0.6) { phaseStep.current = 2; phaseTimer.current = 0; executeVisualScan(); }
-      } else if (phaseStep.current === 2) {
-        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, -0.78, 5*dt); // right
-        if (phaseTimer.current > 0.6) { phaseStep.current = 3; phaseTimer.current = 0; executeVisualScan(); }
+        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, -0.78, 5*dt); // sweep right
+        if (phaseTimer.current > 1.2) { phaseStep.current = 2; phaseTimer.current = 0; executeVisualScan(); }
       } else {
         changeState("DECIDE_NEXT");
       }
@@ -377,7 +382,7 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
           suspicionScore.current = 0; // Made a mistake or gave up
           setSuspicionScoreUI(0);
           inspectedLocations.current.push(inspectionTarget.current.clone());
-          if (inspectedLocations.current.length > 8) inspectedLocations.current.shift();
+          if (inspectedLocations.current.length > 5) inspectedLocations.current.shift(); // Max 5 memory slots
           changeState("DECIDE_NEXT");
         }
       }
@@ -411,13 +416,27 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
         let diff = targetYaw - rotationY.current;
         while (diff < -Math.PI) diff += Math.PI * 2;
         while (diff > Math.PI) diff -= Math.PI * 2;
-        rotationY.current += diff * (st === "CHASE" ? 15 : 8) * dt;
+        
+        // Turn Smoothing (Clamp max turn speed)
+        const maxTurnSpeed = (st === "CHASE" ? 4.0 : 2.5) * dt;
+        const targetTurn = diff * (st === "CHASE" ? 10 : 6) * dt;
+        rotationY.current += Math.max(-maxTurnSpeed, Math.min(maxTurnSpeed, targetTurn));
 
-        pos.addScaledVector(moveDir, targetSpeed * dt);
+        // Smooth Acceleration
+        const targetVel = moveDir.multiplyScalar(targetSpeed);
+        currentVelocity.current.lerp(targetVel, 10 * dt);
+        
+        pos.addScaledVector(currentVelocity.current, dt);
         resolveCollisions(pos, 0.4);
         animTime.current += dt * (targetSpeed / 4);
       }
     } else {
+      // Smooth Deceleration
+      currentVelocity.current.lerp(new THREE.Vector3(0, 0, 0), 15 * dt);
+      if (currentVelocity.current.lengthSq() > 0.001) {
+        pos.addScaledVector(currentVelocity.current, dt);
+        resolveCollisions(pos, 0.4);
+      }
       animTime.current += dt;
     }
 

@@ -389,10 +389,51 @@ export default function Character({ isLocked, playerPosRef, resetTriggerRef, pla
           keyEHoldTriggeredRef.current = true;
           setTransformProp((prev) => {
             if (prev) {
-              scanTimer.current = 0.18; // Force immediate scan
-              window.dispatchEvent(new CustomEvent('hud-update', { detail: { visible: false, text: "" } }));
-              resolvePlayerOverlap(position.current, 0.8, 1.8);
-              return null;
+              const testPos = position.current.clone();
+              testPos.y += 0.5; // Slightly lift to prevent ground snagging on revert
+              
+              // Validate Human size
+              let validPos = null;
+              const checkHumanCollider = (pos) => {
+                const pMinX = pos.x - 0.8; const pMaxX = pos.x + 0.8;
+                const pMinZ = pos.z - 0.8; const pMaxZ = pos.z + 0.8;
+                const pMinY = pos.y; const pMaxY = pos.y + 1.8;
+                for (const obs of OBSTACLES) {
+                  const oMinX = obs.pos[0] - obs.size[0]/2; const oMaxX = obs.pos[0] + obs.size[0]/2;
+                  const oMinZ = obs.pos[2] - obs.size[2]/2; const oMaxZ = obs.pos[2] + obs.size[2]/2;
+                  const oMinY = obs.pos[1] - obs.size[1]/2; const oMaxY = obs.pos[1] + obs.size[1]/2;
+                  const overlapX = Math.min(pMaxX, oMaxX) - Math.max(pMinX, oMinX);
+                  const overlapZ = Math.min(pMaxZ, oMaxZ) - Math.max(pMinZ, oMinZ);
+                  const overlapY = Math.min(pMaxY, oMaxY) - Math.max(pMinY, oMinY);
+                  if (overlapX > 0 && overlapZ > 0 && overlapY > 0) return false;
+                }
+                return true;
+              };
+
+              if (checkHumanCollider(testPos)) {
+                validPos = testPos;
+              } else {
+                const searchRadii = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5];
+                const directions = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+                outerLoop: for (const r of searchRadii) {
+                  for (const dir of directions) {
+                    const tp = testPos.clone();
+                    tp.x += dir[0] * r; tp.z += dir[1] * r;
+                    if (checkHumanCollider(tp)) { validPos = tp; break outerLoop; }
+                  }
+                }
+              }
+
+              if (validPos) {
+                position.current.copy(validPos);
+                scanTimer.current = 0.18; 
+                window.dispatchEvent(new CustomEvent('hud-update', { detail: { visible: false, text: "" } }));
+                return null;
+              } else {
+                window.dispatchEvent(new CustomEvent('hud-update', { detail: { visible: true, text: "Not enough space" } }));
+                setTimeout(() => window.dispatchEvent(new CustomEvent('hud-update', { detail: { visible: false, text: "" } })), 1500);
+                return prev;
+              }
             }
             return prev;
           });
@@ -413,12 +454,70 @@ export default function Character({ isLocked, playerPosRef, resetTriggerRef, pla
 
       let finalRotY;
       if (targetRotY !== null && targetRotY !== undefined) {
-        // Source prop has rotation -> copy exact yaw
         finalRotY = targetRotY;
       } else {
-        // Source prop has no stored rotation -> default to player yaw
         finalRotY = playerGroup.current ? playerGroup.current.rotation.y : 0;
       }
+
+      // 1. Calculate Target Box (Simplified Oversized AABB)
+      const [w, h, d] = target.size;
+      
+      const checkGhostCollider = (testPos) => {
+        const propRadius = Math.max(w, d) / 2;
+        const radius = Math.max(0.35, propRadius);
+        const targetH = Math.max(0.7, h);
+        
+        const pMinX = testPos.x - radius; const pMaxX = testPos.x + radius;
+        const pMinZ = testPos.z - radius; const pMaxZ = testPos.z + radius;
+        const pMinY = testPos.y; const pMaxY = testPos.y + targetH;
+
+        for (const obs of OBSTACLES) {
+          const oMinX = obs.pos[0] - obs.size[0] / 2; const oMaxX = obs.pos[0] + obs.size[0] / 2;
+          const oMinZ = obs.pos[2] - obs.size[2] / 2; const oMaxZ = obs.pos[2] + obs.size[2] / 2;
+          const oMinY = obs.pos[1] - obs.size[1] / 2; const oMaxY = obs.pos[1] + obs.size[1] / 2;
+
+          const overlapX = Math.min(pMaxX, oMaxX) - Math.max(pMinX, oMinX);
+          const overlapZ = Math.min(pMaxZ, oMaxZ) - Math.max(pMinZ, oMinZ);
+          const overlapY = Math.min(pMaxY, oMaxY) - Math.max(pMinY, oMinY);
+
+          if (overlapX > 0 && overlapZ > 0 && overlapY > 0) {
+            return false;
+          }
+        }
+        return true;
+      };
+
+      // 2. Validate Placement via Spiral Search
+      let validPos = null;
+      if (checkGhostCollider(position.current)) {
+        validPos = position.current.clone();
+      } else {
+        const searchRadii = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5];
+        const directions = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+        
+        outerLoop: for (const r of searchRadii) {
+          for (const dir of directions) {
+            const testPos = position.current.clone();
+            testPos.x += dir[0] * r;
+            testPos.z += dir[1] * r;
+            if (checkGhostCollider(testPos)) {
+              validPos = testPos;
+              break outerLoop;
+            }
+          }
+        }
+      }
+
+      // 3. Execution
+      if (!validPos) {
+        window.dispatchEvent(new CustomEvent('hud-update', { detail: { visible: true, text: "Not enough space" } }));
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('hud-update', { detail: { visible: false, text: "" } }));
+        }, 1500);
+        return; // Cancel transform
+      }
+
+      position.current.copy(validPos);
 
       setTransformProp({
         id: target.id,
@@ -428,20 +527,9 @@ export default function Character({ isLocked, playerPosRef, resetTriggerRef, pla
         rotation: [0, finalRotY, 0]
       });
 
-      if (playerGroup.current) {
-        playerGroup.current.rotation.y = finalRotY;
-      }
-      
-      // Initialize prop rotation mechanics to match finalRotY
+      if (playerGroup.current) playerGroup.current.rotation.y = finalRotY;
       propLocked.current = false;
       propYawOffset.current = finalRotY - mouseRotation.current.x;
-
-      // Resolve overlap using target's collision dimensions
-      const [w, h, d] = target.size;
-      const propRadius = Math.max(w, d) / 2;
-      const radius = Math.max(0.35, propRadius);
-      const height = Math.max(0.7, h);
-      resolvePlayerOverlap(position.current, radius, height, target.id);
     };
 
     const handleKeyUp = (e) => {
