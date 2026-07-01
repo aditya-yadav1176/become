@@ -4,6 +4,12 @@ import { useFrame } from "@react-three/fiber";
 import { OBSTACLES, FURNITURE, WALLS } from "../data/mapData";
 import { Html } from "@react-three/drei";
 
+// Dev-only: shows live AI state/suspicion/visibility above the Hunter's head.
+// Must stay OFF for normal gameplay - it breaks the hide-and-seek information
+// asymmetry by revealing exactly what the AI is thinking. Flip to true only
+// for local debugging/tuning of the Hunter AI.
+const DEBUG_AI_OVERLAY = false;
+
 const ROOMS = {
   Hall: { min: { x: -23, z: 6 }, max: { x: 23, z: 23 } },
   Kitchen: { min: { x: -23, z: -13 }, max: { x: -7, z: 4 } },
@@ -53,6 +59,18 @@ function checkObstacleOverlap(pos, radius = 1.0) {
     }
   }
   return false;
+}
+
+function getObstacleHeight(pos, radius = 0.4) {
+  let highest = 0;
+  for (const obs of OBSTACLES) {
+    const hw = obs.size[0] / 2 + radius, hh = obs.size[1] / 2, hd = obs.size[2] / 2 + radius;
+    // Check overlap assuming base Y
+    if (Math.abs(pos.x - obs.pos[0]) < hw && pos.y > obs.pos[1] - hh && pos.y < obs.pos[1] + hh && Math.abs(pos.z - obs.pos[2]) < hd) {
+      highest = Math.max(highest, obs.pos[1] + obs.size[1] / 2);
+    }
+  }
+  return highest;
 }
 
 const resolveCollisions = (pos, radius = 0.4) => {
@@ -120,6 +138,21 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
   const scanTimer = useRef(0);
   const phaseStep = useRef(0);
 
+  // Randomized per-instance ENTRY_SCAN parameters (rolled fresh each time the
+  // Hunter enters the state) so the "look around on arrival" behavior isn't
+  // visually identical every single time - direction, sweep angle, and hold
+  // durations all vary within a natural range.
+  const entryScanDirRef = useRef(1);
+  const entryScanAngleRef = useRef(0.78);
+  const entryScanDur1Ref = useRef(0.8);
+  const entryScanDur2Ref = useRef(1.2);
+
+  const stuckTimer = useRef(0);
+  const lastPos = useRef(new THREE.Vector3(0, 0.5, 15));
+  const vaultTimer = useRef(0);
+  const preVaultState = useRef("");
+  const vaultTargetY = useRef(0);
+
   const changeState = (newState) => {
     aiStateRef.current = newState;
     setAiStateUI(newState);
@@ -148,7 +181,13 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
 
     if (r < 0.4) {
       // 40% PATROL (Random room, random point)
-      const rooms = ["Hall", "Kitchen", "Bedroom"];
+      // Favor a *different* room than the current one most of the time, to reduce
+      // back-to-back same-room patrol clustering. Occasionally (15%) still allow
+      // any room, including the current one, so behavior doesn't become rigidly
+      // predictable in the other direction.
+      const allRooms = ["Hall", "Kitchen", "Bedroom"];
+      const otherRooms = allRooms.filter((rm) => rm !== curRoom);
+      const rooms = (otherRooms.length > 0 && Math.random() < 0.85) ? otherRooms : allRooms;
       tgtRoom = rooms[Math.floor(Math.random() * rooms.length)];
       const rx = ROOMS[tgtRoom];
       finalPt = new THREE.Vector3(rx.min.x + Math.random()*(rx.max.x-rx.min.x), 0.5, rx.min.z + Math.random()*(rx.max.z-rx.min.z));
@@ -267,16 +306,19 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
       if (clusterMatch) curSus -= 20;
 
       // Player specific checks (No cheating, we only know if we literally saw it move)
+      // Weights tuned so recent-movement + recent-form-change + human-type together
+      // (35 + 25 + 20 = 80) stay below the CHASE threshold (85) on a single scan -
+      // genuinely requires 2+ scans (0.5s+ apart) to trigger chase, matching intent.
       if (c.isPlayer) {
         const pMovedTime = playerMovedTimeRef ? playerMovedTimeRef.current : 0;
         const pFormTime = playerFormChangedTimeRef ? playerFormChangedTimeRef.current : 0;
         const now = performance.now();
         
-        if ((now - pMovedTime) < 2000) curSus += 60;
-        if ((now - pFormTime) < 2000) curSus += 50;
+        if ((now - pMovedTime) < 2000) curSus += 35;
+        if ((now - pFormTime) < 2000) curSus += 25;
         if ((now - pMovedTime) > 20000) curSus -= 20;
         
-        if (type === "human") curSus += 45; // Takes ~2-3 scans (0.5-0.75s) to trigger chase, no instant detection
+        if (type === "human") curSus += 20; // Takes ~2-3 scans (0.5-0.75s) to trigger chase, no instant detection
       }
 
       if (curSus > maxSus) {
@@ -305,7 +347,11 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
     }
   };
 
-  useFrame((state, dt) => {
+  useFrame((state, delta) => {
+    // Clamp delta to prevent large position jumps (and wall tunneling) on frame drops
+    // (tab backgrounding, GC pauses, etc.) - mirrors the same clamp used in Character.jsx.
+    const dt = Math.min(delta, 0.1);
+
     if (gameState === "HIDE" || gameState === "WIN" || gameState === "LOSE") { animTime.current = 0; return; }
 
     const pos = position.current;
@@ -313,8 +359,9 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
     let isMoving = false;
     const st = aiStateRef.current;
 
-    // Fast Immediate Catch
-    if (pos.distanceTo(playerPosRef.current) <= 1.5 && (suspicionScore.current > 60 || st === "CHASE")) {
+    // Fast Immediate Catch - only while actively in CHASE, so a catch always follows
+    // a visible chase rather than an off-screen suspicion spike firing on its own.
+    if (st === "CHASE" && pos.distanceTo(playerPosRef.current) <= 1.5) {
       window.dispatchEvent(new CustomEvent('hunter-catch'));
     }
 
@@ -334,6 +381,12 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
         if (navigationQueue.current.length > 0) {
           targetPos.current = navigationQueue.current.shift();
         } else {
+          // Roll fresh scan variability for this arrival: which way it looks first,
+          // how far it turns, and how long it holds each direction.
+          entryScanDirRef.current = Math.random() < 0.5 ? 1 : -1;
+          entryScanAngleRef.current = 0.55 + Math.random() * 0.35; // ~0.55–0.9 rad
+          entryScanDur1Ref.current = 0.6 + Math.random() * 0.6;    // ~0.6–1.2s
+          entryScanDur2Ref.current = 0.9 + Math.random() * 0.6;    // ~0.9–1.5s
           changeState("ENTRY_SCAN");
         }
       } else {
@@ -344,11 +397,11 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
     else if (st === "ENTRY_SCAN") {
       phaseTimer.current += dt;
       if (phaseStep.current === 0) {
-        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, 0.78, 5*dt); // left
-        if (phaseTimer.current > 0.8) { phaseStep.current = 1; phaseTimer.current = 0; executeVisualScan(); }
+        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, entryScanAngleRef.current * entryScanDirRef.current, 5*dt);
+        if (phaseTimer.current > entryScanDur1Ref.current) { phaseStep.current = 1; phaseTimer.current = 0; executeVisualScan(); }
       } else if (phaseStep.current === 1) {
-        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, -0.78, 5*dt); // sweep right
-        if (phaseTimer.current > 1.2) { phaseStep.current = 2; phaseTimer.current = 0; executeVisualScan(); }
+        lookYaw.current = THREE.MathUtils.lerp(lookYaw.current, -entryScanAngleRef.current * entryScanDirRef.current, 5*dt);
+        if (phaseTimer.current > entryScanDur2Ref.current) { phaseStep.current = 2; phaseTimer.current = 0; executeVisualScan(); }
       } else {
         changeState("DECIDE_NEXT");
       }
@@ -407,11 +460,57 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
         changeState("DECIDE_NEXT");
       }
     }
+    else if (st === "VAULTING") {
+      isMoving = false; // Bypass generic movement/collision logic
+      vaultTimer.current += dt;
+      
+      const moveDir = targetPos.current.clone().sub(pos); moveDir.y = 0;
+      if (moveDir.lengthSq() > 0.001) {
+        moveDir.normalize();
+        pos.addScaledVector(moveDir, targetSpeed * dt);
+        
+        const targetYaw = Math.atan2(moveDir.x, moveDir.z);
+        let diff = targetYaw - rotationY.current;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        rotationY.current += diff * 10 * dt;
+      }
+
+      const progress = vaultTimer.current / 0.6;
+      if (progress >= 1.0) {
+        pos.y = 0.5;
+        changeState(preVaultState.current);
+        stuckTimer.current = 0;
+      } else {
+        // Smooth sine arc over the obstacle
+        pos.y = 0.5 + Math.sin(progress * Math.PI) * (vaultTargetY.current - 0.5);
+      }
+    }
 
     if (isMoving && targetPos.current) {
       const moveDir = targetPos.current.clone().sub(pos); moveDir.y = 0; 
       if (moveDir.lengthSq() > 0.001) {
         moveDir.normalize();
+
+        // --- Minimal Fix: Local Obstacle Avoidance ---
+        // Look ahead 1.2 units to detect blockage. If blocked, steer 45 deg right, then left.
+        const lookAhead = 1.2;
+        if (checkObstacleOverlap(pos.clone().addScaledVector(moveDir, lookAhead), 0.4)) {
+          const steerRight = moveDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 4);
+          if (!checkObstacleOverlap(pos.clone().addScaledVector(steerRight, lookAhead), 0.4)) {
+            moveDir.copy(steerRight);
+          } else {
+            const steerLeft = moveDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+            if (!checkObstacleOverlap(pos.clone().addScaledVector(steerLeft, lookAhead), 0.4)) {
+              moveDir.copy(steerLeft);
+            } else {
+              // 90 deg right fallback if deeply blocked
+              moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+            }
+          }
+        }
+        // ----------------------------------------------
+
         const targetYaw = Math.atan2(moveDir.x, moveDir.z);
         let diff = targetYaw - rotationY.current;
         while (diff < -Math.PI) diff += Math.PI * 2;
@@ -435,7 +534,7 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
       currentVelocity.current.lerp(new THREE.Vector3(0, 0, 0), 15 * dt);
       if (currentVelocity.current.lengthSq() > 0.001) {
         pos.addScaledVector(currentVelocity.current, dt);
-        resolveCollisions(pos, 0.4);
+        if (st !== "VAULTING") resolveCollisions(pos, 0.4);
       }
       animTime.current += dt;
     }
@@ -446,13 +545,50 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
       hunterGroup.current.rotation.y = rotationY.current;
     }
 
+    // --- Stuck Detection & Vault Initiation ---
+    if (isMoving && st !== "VAULTING") {
+      const distMoved = pos.distanceTo(lastPos.current);
+      if (distMoved < targetSpeed * dt * 0.2) {
+        stuckTimer.current += dt;
+        if (stuckTimer.current > 1.5) {
+          const moveDir = targetPos.current.clone().sub(pos); moveDir.y = 0;
+          if (moveDir.lengthSq() > 0.001) {
+            moveDir.normalize();
+            // Check 1.2 units ahead for obstacle height
+            const h = getObstacleHeight(pos.clone().addScaledVector(moveDir, 1.2));
+            if (h > 0 && h <= 1.3) {
+              preVaultState.current = st;
+              vaultTargetY.current = h + 0.3; // Added clearance
+              vaultTimer.current = 0;
+              changeState("VAULTING");
+            } else {
+              stuckTimer.current = 0; // Too tall (wall) or clear, just reset to avoid infinite vault loops
+            }
+          }
+        }
+      } else {
+        stuckTimer.current = 0;
+      }
+    } else {
+      stuckTimer.current = 0;
+    }
+    lastPos.current.copy(pos);
+
     // --- ANIMATION ---
     const time = animTime.current;
     if (bodyMesh.current) {
       let bobOffset = 0, targetTorsoX = 0, targetTorsoY = 0, targetHeadX = 0, targetHeadY = 0;
       let targetLeftLegX = 0, targetRightLegX = 0, targetLeftArmX = 0, targetRightArmX = 0;
 
-      if (!isMoving) {
+      if (st === "VAULTING") {
+        targetLeftLegX = -1.2;
+        targetRightLegX = -1.2;
+        targetLeftArmX = 0.8;
+        targetRightArmX = 0.8;
+        targetTorsoX = 0.3;
+        targetHeadY = 0;
+        bobOffset = 0;
+      } else if (!isMoving) {
         bobOffset = Math.sin(time * 2.5) * 0.02;
         targetTorsoX = Math.sin(time * 2.5) * 0.01;
         targetHeadY = Math.sin(time * 0.8) * 0.12;
@@ -499,18 +635,20 @@ export default function Hunter({ gameState, playerPosRef, hunterPosRef, resetTri
 
   return (
     <group ref={hunterGroup}>
-      <Html position={[0, 2.3, 0]} center zIndexRange={[100, 0]}>
-        <div style={{
-          background: 'rgba(0,0,0,0.85)', color: '#3b82f6', padding: '6px 10px',
-          borderRadius: '4px', fontFamily: 'monospace', fontSize: '11px',
-          whiteSpace: 'nowrap', border: '1px solid #3b82f6', pointerEvents: 'none'
-        }}>
-          <div>[V3 AI]</div>
-          <div>STATE: {aiStateUI}</div>
-          <div>SUSPICION: {suspicionScoreUI.toFixed(0)}</div>
-          <div>VISIBLE OBJS: {visibleCountUI}</div>
-        </div>
-      </Html>
+      {DEBUG_AI_OVERLAY && (
+        <Html position={[0, 2.3, 0]} center zIndexRange={[100, 0]}>
+          <div style={{
+            background: 'rgba(0,0,0,0.85)', color: '#3b82f6', padding: '6px 10px',
+            borderRadius: '4px', fontFamily: 'monospace', fontSize: '11px',
+            whiteSpace: 'nowrap', border: '1px solid #3b82f6', pointerEvents: 'none'
+          }}>
+            <div>[V3 AI]</div>
+            <div>STATE: {aiStateUI}</div>
+            <div>SUSPICION: {suspicionScoreUI.toFixed(0)}</div>
+            <div>VISIBLE OBJS: {visibleCountUI}</div>
+          </div>
+        </Html>
+      )}
       <group ref={bodyMesh}>
         <group ref={torsoGroup} position={[0, 0.7, 0]}>
           <mesh position={[0, 0.35, 0]} castShadow receiveShadow><boxGeometry args={[0.6, 0.68, 0.36]} /><meshStandardMaterial color="#722F37" roughness={0.85} /></mesh>
